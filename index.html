@@ -78,6 +78,9 @@
       <div class="sub">Keep the flow alive. Construction drains resources continuously until the job is done.</div>
       <section><h3>SELECTED</h3><div class="selected" id="selected">COMMANDER <span style="color:#8ea6a0">// ready for orders</span></div></section>
       <section><h3>DEPLOY UNIT</h3><div id="unitButtons" class="build-grid"></div></section>
+      <section><h3>DEFENCE</h3><div class="build-grid">
+        <button id="wallButton" type="button"><strong>WALL</strong><small>20M / 10E · blocks path</small></button>
+      </div></section>
       <section><h3>CASTLE STATUS</h3><div class="queue" id="queue">No active threat. Your castle is stable.</div></section>
       <section><h3>SECTOR NOTES</h3><div class="sub" style="margin:0">Enemy reinforcements arrive every 28 seconds. Destroyed assets become wreckage. Bring the commander close and press <b style="color:var(--lime)">R</b> to reclaim metal.</div></section>
       <section><h3>FIELD LEGEND</h3><div class="legend"><span>YOUR FORCES</span><span>HOSTILES</span><span>PROJECTILES</span><span>WRECKAGE</span></div></section>
@@ -129,6 +132,7 @@
     structureTypes: {
       mex: { name: 'METAL EXTRACTOR', cost: { metal: 80, energy: 110 }, kind: 'structure', radius: 28 },
       solar: { name: 'SOLAR ARRAY', cost: { metal: 70, energy: 90 }, kind: 'structure', radius: 28 },
+      wall: { name: 'WALL', cost: { metal: 20, energy: 10 }, kind: 'wall', radius: 12 },
     },
   };
 
@@ -136,8 +140,10 @@
     player: { metal: 400, energy: 700 },
     enemy: { metal: 0, energy: 0 },
   };
-  const buildings = [], units = [], wrecks = [], sparks = [];
+  const buildings = [], units = [], wrecks = [], sparks = [], walls = [];
   const matchState = { value: 'playing' };
+  let wallMode = false;
+  let warningBanner = null;
 
   function resize(){ const r=canvas.getBoundingClientRect(); view.w=r.width; view.h=r.height; view.sx=r.width/W; view.sy=r.height/H; canvas.width=r.width*devicePixelRatio; canvas.height=r.height*devicePixelRatio; ctx.setTransform(devicePixelRatio*view.sx,0,0,devicePixelRatio*view.sy,0,0); }
   addEventListener('resize', resize); resize();
@@ -237,6 +243,11 @@
       const dy = y - building.y;
       if (Math.abs(dx) < half + 12 && Math.abs(dy) < half + 12) return true;
     }
+    for (const wall of walls) {
+      const dx = x - wall.x;
+      const dy = y - wall.y;
+      if (Math.abs(dx) < wall.radius + 8 && Math.abs(dy) < wall.radius + 8) return true;
+    }
     return false;
   }
   function cellKey(cell){ return `${cell.x},${cell.y}`; }
@@ -305,6 +316,14 @@
     unitButtons.querySelectorAll('[data-unit]').forEach((button) => {
       button.addEventListener('click', () => purchaseUnit(button.dataset.unit));
     });
+
+    const wallButton = document.querySelector('#wallButton');
+    wallButton.addEventListener('click', () => {
+      wallMode = !wallMode;
+      wallButton.style.borderColor = wallMode ? '#d5f36b' : '#376159';
+      wallButton.style.background = wallMode ? '#294943' : '#1a302e';
+      say(wallMode ? 'WALL PLACEMENT READY' : 'WALL MODE OFF');
+    });
   }
 
   function canAfford(owner, cost) {
@@ -331,6 +350,41 @@
     const spawnY = castle.y + (Math.random() * 70 - 35);
     addUnit(type, spawnX, spawnY, 'player');
     say(`${def.name} DEPLOYED`);
+  }
+
+  function placeWall(x, y) {
+    if (matchState.value !== 'playing') return;
+    const wallCost = CONFIG.structureTypes.wall.cost;
+    if (!canAfford('player', wallCost)) {
+      say('NOT ENOUGH RESOURCES FOR WALL');
+      return;
+    }
+
+    const cellSize = CONFIG.map.cellSize;
+    const snappedX = Math.round(x / cellSize) * cellSize + cellSize / 2;
+    const snappedY = Math.round(y / cellSize) * cellSize + cellSize / 2;
+    const isNearCastle = dist({ x: snappedX, y: snappedY }, playerCastle) < 40;
+    if (isNearCastle || snappedX < 80 || snappedY < 80 || snappedX > W - 80 || snappedY > H - 80) {
+      say('WALL MUST BE SET OUTSIDE CASTLE SPACE');
+      return;
+    }
+    if (isRoadBlocked(snappedX, snappedY)) {
+      say('WALL COLLIDES WITH EXISTING STRUCTURE');
+      return;
+    }
+
+    economy.player.metal -= wallCost.metal;
+    economy.player.energy -= wallCost.energy;
+    walls.push({
+      x: snappedX,
+      y: snappedY,
+      hp: 120,
+      maxHp: 120,
+      radius: 14,
+      kind: 'wall',
+      owner: 'player',
+    });
+    say('WALL DEPLOYED');
   }
 
   function chooseNearestTarget(unit) {
@@ -600,6 +654,17 @@
     ctx.restore();
   }
 
+  function drawWall(wall) {
+    ctx.save();
+    ctx.translate(wall.x, wall.y);
+    ctx.fillStyle = '#8aa3a0';
+    ctx.strokeStyle = '#dfeecf';
+    ctx.lineWidth = 2;
+    ctx.fillRect(-14, -14, 28, 28);
+    ctx.strokeRect(-14, -14, 28, 28);
+    ctx.restore();
+  }
+
   function drawSpark(spark) {
     const alpha = 1 - spark.life / 0.3;
     ctx.globalAlpha = alpha;
@@ -632,9 +697,22 @@
       if (building.kind === 'castle') drawCastle(building);
       else drawStructure(building);
     }
+    for (const wall of walls) drawWall(wall);
     for (const unit of units) drawUnitUnit(unit);
     for (const wreck of wrecks) drawWreck(wreck);
     for (const spark of sparks) drawSpark(spark);
+    if (warningBanner) {
+      ctx.fillStyle = 'rgba(7, 18, 17, 0.7)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#d5f36b';
+      ctx.font = '700 30px Barlow Condensed';
+      ctx.textAlign = 'center';
+      ctx.fillText(warningBanner.text, W / 2, H / 2);
+      ctx.font = '12px IBM Plex Mono';
+      ctx.fillStyle = '#e9f4f0';
+      ctx.fillText('ENEMY CONTACT DETECTED', W / 2, H / 2 + 26);
+      ctx.textAlign = 'left';
+    }
   }
 
   function updateThreat() {
@@ -643,8 +721,23 @@
     threatStatus.classList.toggle('warning', remaining <= 8 && matchState.value === 'playing');
   }
 
+  function triggerBattleWarning() {
+    if (warningBanner) return;
+    warningBanner = { timer: 3.2, text: 'NEW ENEMY OBSERVED — BE PREPARED' };
+    say('NEW ENEMY OBSERVED — BE PREPARED');
+  }
+
   canvas.addEventListener('click', (e) => {
     const p = world(e);
+    if (wallMode) {
+      placeWall(p.x, p.y);
+      wallMode = false;
+      const wallButton = document.querySelector('#wallButton');
+      wallButton.style.borderColor = '#376159';
+      wallButton.style.background = '#1a302e';
+      return;
+    }
+
     const candidates = [...units, ...buildings]
       .filter((entity) => entity.hp > 0 && entity.owner === 'player' && dist(entity, p) < 28)
       .sort((a, b) => dist(a, p) - dist(b, p));
@@ -684,9 +777,15 @@
     elapsed += dt;
 
     if (matchState.value === 'playing') {
+      if (elapsed > 4 && !warningBanner) triggerBattleWarning();
       updateEconomy(dt);
       updateCombat(dt);
       updateThreat();
+    }
+
+    if (warningBanner) {
+      warningBanner.timer -= dt;
+      if (warningBanner.timer <= 0) warningBanner = null;
     }
 
     if (toastTimer > 0) {
