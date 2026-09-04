@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IRONLINE // economy skirmish</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+    :root { --ink:#e9f4f0; --muted:#8ea6a0; --panel:#122020; --panel2:#182b29; --line:#31504a; --lime:#d5f36b; --orange:#ff9b5c; --cyan:#72dbe2; --red:#ff736e; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; background:#071211; color:var(--ink); font-family:'IBM Plex Mono',monospace; overflow:hidden; }
+    .shell { width:min(1500px,100vw); height:100vh; margin:auto; display:grid; grid-template-columns:minmax(0,1fr) 330px; background:#0b1716; }
+    main { position:relative; min-width:0; display:flex; flex-direction:column; }
+    header { height:76px; display:flex; align-items:center; justify-content:space-between; padding:0 24px; border-bottom:1px solid var(--line); background:#10201e; }
+    .brand { display:flex; align-items:center; gap:13px; }
+    .brand-mark { width:34px; height:34px; border:2px solid var(--lime); display:grid; place-items:center; color:var(--lime); font-family:'Barlow Condensed'; font-weight:800; font-size:20px; transform:skew(-8deg); }
+    h1 { margin:0; font:700 22px 'Barlow Condensed'; letter-spacing:2px; }
+    .kicker { color:var(--muted); font-size:10px; letter-spacing:1.5px; }
+    .status { display:flex; gap:22px; align-items:center; font-size:12px; }
+    .resource { min-width:125px; }
+    .resource label { display:flex; justify-content:space-between; color:var(--muted); font-size:10px; letter-spacing:1px; margin-bottom:5px; }
+    .resource b { color:var(--ink); font-weight:500; }
+    .bar { height:5px; background:#203532; overflow:hidden; }
+    .bar span { display:block; height:100%; width:50%; background:var(--lime); transition:width .12s linear; }
+    .resource.energy .bar span { background:var(--cyan); }
+    #game { width:100%; flex:1; display:block; background:#091a18; cursor:crosshair; }
+    .hint { position:absolute; bottom:15px; left:20px; padding:7px 10px; color:#9fb7b1; background:rgba(7,18,17,.82); border-left:2px solid var(--lime); font-size:10px; letter-spacing:.3px; pointer-events:none; }
+    aside { border-left:1px solid var(--line); background:var(--panel); padding:22px 18px; overflow:auto; }
+    .eyebrow { color:var(--lime); font-size:10px; letter-spacing:2px; margin-bottom:6px; }
+    aside h2 { font:600 25px 'Barlow Condensed'; letter-spacing:1px; margin:0 0 5px; }
+    .sub { color:var(--muted); font-size:10px; line-height:1.5; margin-bottom:22px; }
+    section { border-top:1px solid var(--line); padding-top:16px; margin-top:17px; }
+    section h3 { font:500 12px 'Barlow Condensed'; letter-spacing:1.5px; color:var(--muted); margin:0 0 11px; }
+    .build-grid { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+    button { color:var(--ink); border:1px solid #376159; background:#1a302e; padding:10px 9px; text-align:left; cursor:pointer; font:500 11px 'IBM Plex Mono'; transition:background .15s,border .15s,transform .15s; }
+    button:hover { background:#294943; border-color:var(--lime); transform:translateY(-1px); }
+    button:disabled { opacity:.38; cursor:not-allowed; transform:none; }
+    button strong { display:block; color:var(--lime); font:600 15px 'Barlow Condensed'; letter-spacing:.6px; margin-bottom:5px; }
+    button small { display:block; color:#9ab4ad; font-size:9px; line-height:1.35; }
+    .queue { min-height:54px; background:#0c1918; border:1px dashed #34504a; padding:10px; font-size:10px; color:#a9beb8; }
+    .queue-item { display:flex; justify-content:space-between; margin-bottom:5px; color:var(--ink); }
+    .queue-item em { color:var(--orange); font-style:normal; }
+    .selected { background:#0d1b1a; border-left:2px solid var(--cyan); padding:11px; font-size:11px; line-height:1.6; }
+    .selected b { color:var(--cyan); font-weight:500; }
+    .legend { display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:9px; color:var(--muted); }
+    .legend span:before { content:''; display:inline-block; width:8px; height:8px; margin-right:6px; background:var(--lime); }
+    .legend span:nth-child(2):before { background:var(--red); }
+    .legend span:nth-child(3):before { background:var(--orange); }
+    .legend span:nth-child(4):before { background:#9eaa9b; }
+    .toast { position:absolute; top:95px; left:50%; transform:translateX(-50%); color:#071211; background:var(--lime); padding:7px 12px; font-size:10px; font-weight:600; letter-spacing:.5px; opacity:0; pointer-events:none; transition:opacity .2s; }
+    .toast.show { opacity:1; }
+    @media (max-width:850px) { body { overflow:auto; } .shell { height:auto; min-height:100vh; display:block; } header { height:auto; min-height:76px; flex-wrap:wrap; gap:12px; padding:14px; } .status { gap:10px; } .resource { min-width:100px; } main { height:68vh; min-height:430px; } aside { border:0; border-top:1px solid var(--line); } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <main>
+      <header>
+        <div class="brand"><div class="brand-mark">I</div><div><h1>IRONLINE</h1><div class="kicker">ECONOMY SKIRMISH / SECTOR 07</div></div></div>
+        <div class="status">
+          <div class="resource"><label>METAL <b id="metalText">400</b></label><div class="bar"><span id="metalBar"></span></div></div>
+          <div class="resource energy"><label>ENERGY <b id="energyText">700</b></label><div class="bar"><span id="energyBar"></span></div></div>
+          <div id="clock" class="kicker">00:00</div>
+        </div>
+      </header>
+      <canvas id="game"></canvas>
+      <div class="hint">LMB SELECT / RMB MOVE • CLICK BUILDING TO PLACE • R TO RECLAIM</div>
+      <div id="toast" class="toast"></div>
+    </main>
+    <aside>
+      <div class="eyebrow">COMMAND LINK // ONLINE</div>
+      <h2>FIELD CONTROL</h2>
+      <div class="sub">Keep the flow alive. Construction drains resources continuously until the job is done.</div>
+      <section><h3>SELECTED</h3><div class="selected" id="selected">COMMANDER <span style="color:#8ea6a0">// ready for orders</span></div></section>
+      <section><h3>CONSTRUCTION</h3><div class="build-grid">
+        <button data-build="mex"><strong>METAL EXTRACTOR</strong><small>80M / 110E · +2.2M/s</small></button>
+        <button data-build="solar"><strong>SOLAR ARRAY</strong><small>70M / 90E · +7E/s</small></button>
+        <button data-build="raider"><strong>RAIDER</strong><small>65M / 45E · close range</small></button>
+        <button data-build="artillery"><strong>LOB CANNON</strong><small>110M / 130E · arcing shot</small></button>
+        <button data-build="titan"><strong>IRONCLAD</strong><small>180M / 100E · slow / tough</small></button>
+      </div></section>
+      <section><h3>BUILD QUEUE</h3><div class="queue" id="queue">Nothing queued. Select a construction order.</div></section>
+      <section><h3>SECTOR NOTES</h3><div class="sub" style="margin:0">Enemy reinforcements arrive every 28 seconds. Destroyed assets become wreckage. Bring the commander close and press <b style="color:var(--lime)">R</b> to reclaim metal.</div></section>
+      <section><h3>FIELD LEGEND</h3><div class="legend"><span>YOUR FORCES</span><span>HOSTILES</span><span>PROJECTILES</span><span>WRECKAGE</span></div></section>
+    </aside>
+  </div>
+<script>
+(() => {
+  const canvas = document.querySelector('#game'), ctx = canvas.getContext('2d');
+  const metalText = document.querySelector('#metalText'), energyText = document.querySelector('#energyText');
+  const metalBar = document.querySelector('#metalBar'), energyBar = document.querySelector('#energyBar');
+  const selectedEl = document.querySelector('#selected'), queueEl = document.querySelector('#queue'), toastEl = document.querySelector('#toast');
+  const W = 1120, H = 680;
+  let view = { w: 0, h: 0, sx: 1, sy: 1 }, selected = null, buildMode = null, last = performance.now(), elapsed = 0, spawnClock = 0, toastTimer = 0;
+  const economy = { metal: 400, energy: 700, metalCap: 1000, energyCap: 2200 };
+  const buildings = [], units = [], wrecks = [], shots = [], sparks = [];
+  const defs = {
+    mex:{name:'METAL EXTRACTOR', cost:[80,110], build:4, kind:'building'}, solar:{name:'SOLAR ARRAY', cost:[70,90], build:4, kind:'building'},
+    raider:{name:'RAIDER', cost:[65,45], build:3, kind:'unit', hp:70, speed:105, range:115, damage:16, reload:1.1, shot:'bolt'},
+    artillery:{name:'LOB CANNON', cost:[110,130], build:5, kind:'unit', hp:85, speed:55, range:260, damage:34, reload:2.5, shot:'arc'},
+    titan:{name:'IRONCLAD', cost:[180,100], build:7, kind:'unit', hp:250, speed:28, range:145, damage:29, reload:1.8, shot:'heavy'}
+  };
+  function resize(){ const r=canvas.getBoundingClientRect(); view.w=r.width; view.h=r.height; view.sx=r.width/W; view.sy=r.height/H; canvas.width=r.width*devicePixelRatio; canvas.height=r.height*devicePixelRatio; ctx.setTransform(devicePixelRatio*view.sx,0,0,devicePixelRatio*view.sy,0,0); }
+  addEventListener('resize', resize); resize();
+  function addBuilding(type,x,y,owner='player',complete=true){ const d=defs[type]; buildings.push({type,x,y,owner,hp:owner==='player'?150:190,maxHp:owner==='player'?150:190,progress:complete?1:0,build: d.build}); }
+  function addUnit(type,x,y,owner='player'){ const d=defs[type]; const u={type,x,y,owner,hp:d.hp,maxHp:d.hp,cool:Math.random(),target:null,angle:0}; units.push(u); return u; }
+  addBuilding('mex',155,220); addBuilding('solar',215,220); addBuilding('mex',155,300); addBuilding('solar',215,300);
+  addUnit('titan',265,390); addUnit('raider',320,425); addUnit('raider',310,470); addBuilding('solar',930,165,'enemy'); addBuilding('mex',930,245,'enemy'); addUnit('raider',850,300,'enemy'); addUnit('artillery',840,430,'enemy');
+  const commander={type:'commander',x:270,y:300,owner:'player',hp:500,maxHp:500,range:135,damage:24,cool:0,speed:85}; units.push(commander); selected=commander;
+  function world(e){ const r=canvas.getBoundingClientRect(); return {x:(e.clientX-r.left)/view.sx,y:(e.clientY-r.top)/view.sy}; }
+  function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
+  function nearPoint(a,x,y){return Math.hypot(a.x-x,a.y-y)<25;}
+  function say(text){ toastEl.textContent=text; toastEl.classList.add('show'); toastTimer=2; }
+  function queueFor(u){ return u.queue || (u.queue=[]); }
+  function queueOrder(type){ if(!selected || selected!==commander || buildMode) { say('SELECT THE COMMANDER FIRST'); return; } queueFor(commander).push({type,progress:0}); say(defs[type].name+' QUEUED'); }
+  document.querySelectorAll('[data-build]').forEach(b=>b.addEventListener('click',()=>queueOrder(b.dataset.build)));
+  canvas.addEventListener('click',e=>{ const p=world(e); if(buildMode){ const good=p.x>55&&p.x<W-55&&p.y>70&&p.y<H-45; if(good){ const item={type:buildMode,x:p.x,y:p.y,owner:'player',hp:150,maxHp:150,progress:0,build:defs[buildMode].build}; buildings.push(item); commander.queue.shift(); buildMode=null; say('CONSTRUCTION STARTED'); } return; } const candidates=[...units,...buildings].filter(o=>o.owner==='player'&&dist(o,p)<28); if(candidates.length){selected=candidates[candidates.length-1]; updatePanel();} });
+  canvas.addEventListener('contextmenu',e=>{e.preventDefault(); if(selected&&selected.owner==='player'&&'speed' in selected){selected.move={...world(e)}; say('MOVE ORDER RECEIVED');}});
+  addEventListener('keydown',e=>{if(e.key.toLowerCase()==='r'&&selected===commander){let w=wrecks.find(x=>dist(x,commander)<55);if(w){economy.metal=Math.min(economy.metalCap,economy.metal+w.value);wrecks.splice(wrecks.indexOf(w),1);say('WRECK RECLAIMED +'+w.value+' METAL');}else say('NO WRECKAGE IN RANGE');}});
+  function canSpend(m,e){return economy.metal>=m&&economy.energy>=e;}
+  function tickBuild(dt){ if(!commander.queue?.length)return; const item=commander.queue[0], d=defs[item.type], rate=1/d.build; const wantM=d.cost[0]*rate*dt, wantE=d.cost[1]*rate*dt; const paidM=Math.min(wantM,economy.metal), paidE=Math.min(wantE,economy.energy); if(paidM>0&&paidE>0){economy.metal-=paidM; economy.energy-=paidE; item.progress+=Math.min(paidM/wantM,paidE/wantE)*rate*dt;} if(item.progress>=1){ if(d.kind==='building'){let b=buildings.find(x=>x.type===item.type&&x.progress===0&&x.owner==='player'); if(b)b.progress=1;} else {addUnit(item.type,commander.x+30,commander.y+20); } commander.queue.shift(); say(d.name+' ONLINE'); } }
+  function income(dt){let mex=buildings.filter(b=>b.owner==='player'&&b.progress>=1&&b.type==='mex').length, sol=buildings.filter(b=>b.owner==='player'&&b.progress>=1&&b.type==='solar').length; economy.metal=Math.min(economy.metalCap,economy.metal+(1.15+mex*2.2)*dt); economy.energy=Math.min(economy.energyCap,economy.energy+(3+sol*7)*dt);}
+  function fire(a,b){ const d=a.type==='commander'?a:defs[a.type]; shots.push({x:a.x,y:a.y,target:b,owner:a.owner,damage:d.damage,life:0,ttl:a.type==='artillery'?1.0:.42,arc:a.type==='artillery',color:a.owner==='player'?'#d5f36b':'#ff736e'}); a.cool=d.reload; }
+  function combat(dt){ [...units].forEach(a=>{if(a.hp<=0)return; a.cool-=dt; const d=a.type==='commander'?a:defs[a.type]; let enemies=units.filter(b=>b.owner!==a.owner&&b.hp>0); let target=enemies.sort((x,y)=>dist(a,x)-dist(a,y))[0]; if(target&&dist(a,target)<=d.range){a.target=target;if(a.cool<=0)fire(a,target);} if(a.move&&a.speed){let dx=a.move.x-a.x,dy=a.move.y-a.y,len=Math.hypot(dx,dy);if(len>4){a.x+=dx/len*a.speed*dt;a.y+=dy/len*a.speed*dt;}else a.move=null;} if(a.owner==='enemy'&&target&&dist(a,target)>d.range*.82){let dx=target.x-a.x,dy=target.y-a.y,len=Math.hypot(dx,dy);a.x+=dx/len*a.speed*dt;a.y+=dy/len*a.speed*dt;} });
+    shots.forEach(s=>{s.life+=dt;const t=Math.min(s.life/s.ttl,1), tx=s.target.x,ty=s.target.y; s.cx=s.x+(tx-s.x)*t;s.cy=s.y+(ty-s.y)*t-(s.arc?Math.sin(t*Math.PI)*75:0);if(t>=1){if(s.target.hp>0)s.target.hp-=s.damage;for(let i=0;i<5;i++)sparks.push({x:tx,y:ty,life:0,dx:(Math.random()-.5)*45,dy:(Math.random()-.5)*45});s.done=true;}}); for(let i=shots.length-1;i>=0;i--)if(shots[i].done)shots.splice(i,1); for(let i=units.length-1;i>=0;i--)if(units[i].hp<=0){let u=units[i];wrecks.push({x:u.x,y:u.y,value:u.type==='titan'?95:u.type==='artillery'?55:30,life:0});if(selected===u)selected=commander;units.splice(i,1);say('ASSET LOST // WRECKAGE AVAILABLE');} }
+  function enemyWave(){const type=elapsed%56>28?'raider':'artillery';addUnit(type,850+Math.random()*90,350+Math.random()*150,'enemy');say('HOSTILE REINFORCEMENT DETECTED');}
+  function updatePanel(){if(!selected){selectedEl.textContent='NO SELECTION';return;}const name=selected.type==='commander'?'COMMANDER':defs[selected.type]?.name||'STRUCTURE';selectedEl.innerHTML='<b>'+name+'</b> <span style="color:#8ea6a0">// '+Math.ceil(selected.hp)+' / '+selected.maxHp+' HP</span>'+(selected.progress<1?'<br><span style="color:#ff9b5c">BUILDING '+Math.floor(selected.progress*100)+'%</span>':'');}
+  function draw(){ctx.clearRect(0,0,W,H);ctx.fillStyle='#091a18';ctx.fillRect(0,0,W,H);ctx.strokeStyle='#153632';ctx.lineWidth=1;for(let x=0;x<W;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}for(let y=0;y<H;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}ctx.fillStyle='rgba(35,90,68,.16)';ctx.fillRect(55,70,360,540);ctx.fillStyle='rgba(100,42,43,.12)';ctx.fillRect(720,70,345,540);ctx.font='10px IBM Plex Mono';ctx.fillStyle='#477068';ctx.fillText('FRIENDLY CONTROL ZONE',70,93);ctx.fillStyle='#704b4b';ctx.fillText('HOSTILE CONTROL ZONE',735,93);
+    wrecks.forEach(w=>{ctx.save();ctx.translate(w.x,w.y);ctx.rotate(.3);ctx.strokeStyle='#9eaa9b';ctx.lineWidth=3;ctx.strokeRect(-13,-8,26,16);ctx.strokeStyle='#53685e';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(-11,7);ctx.lineTo(11,-7);ctx.moveTo(-10,-7);ctx.lineTo(10,7);ctx.stroke();ctx.restore();});
+    buildings.forEach(b=>{if(b.progress<1)drawConstruction(b);else drawBuilding(b);}); units.forEach(drawUnit);shots.forEach(s=>{ctx.fillStyle=s.color;ctx.shadowBlur=10;ctx.shadowColor=s.color;ctx.beginPath();ctx.arc(s.cx,s.cy, s.arc?5:4,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;}); sparks.forEach(s=>{ctx.globalAlpha=1-s.life/.4;ctx.fillStyle='#ffc48b';ctx.fillRect(s.x+s.dx*s.life/.4,s.y+s.dy*s.life/.4,2,2);ctx.globalAlpha=1;});
+    if(buildMode){ctx.fillStyle='rgba(213,243,107,.14)';ctx.fillRect(55,70,W-110,H-115);ctx.fillStyle='#d5f36b';ctx.font='12px IBM Plex Mono';ctx.fillText('CLICK TO PLACE '+defs[buildMode].name,70,120);}
+  }
+  function drawConstruction(b){ctx.save();ctx.translate(b.x,b.y);ctx.strokeStyle='#ff9b5c';ctx.setLineDash([4,4]);ctx.strokeRect(-20,-20,40,40);ctx.setLineDash([]);ctx.fillStyle='#ff9b5c';ctx.font='9px IBM Plex Mono';ctx.fillText(Math.floor(b.progress*100)+'%',-12,4);ctx.restore();}
+  function drawBuilding(b){ctx.save();ctx.translate(b.x,b.y);let col=b.owner==='player'?'#d5f36b':'#ff736e';ctx.fillStyle=b.type==='mex'?'#586c3c':b.type==='solar'?'#356b70':'#512e32';ctx.strokeStyle=col;ctx.lineWidth=2;ctx.fillRect(-18,-18,36,36);ctx.strokeRect(-18,-18,36,36);ctx.fillStyle=col;ctx.font='bold 15px Barlow Condensed';ctx.textAlign='center';ctx.fillText(b.type==='mex'?'M':b.type==='solar'?'E':'X',0,6);ctx.textAlign='left';health(b,-20,26);ctx.restore();}
+  function drawUnit(u){ctx.save();ctx.translate(u.x,u.y);let col=u.owner==='player'?'#d5f36b':'#ff736e';ctx.fillStyle=u===selected?'#e9f4f0':col;ctx.strokeStyle=col;ctx.lineWidth=2;if(u.type==='commander'){ctx.rotate(Math.PI/4);ctx.fillRect(-13,-13,26,26);ctx.rotate(-Math.PI/4);ctx.fillStyle='#17312d';ctx.fillRect(-4,-4,8,8);}else if(u.type==='titan'){ctx.fillRect(-15,-10,30,20);ctx.fillStyle='#263a35';ctx.fillRect(-7,-16,14,6);}else if(u.type==='artillery'){ctx.beginPath();ctx.arc(0,0,13,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.strokeStyle='#0b1716';ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(17,-10);ctx.stroke();}else{ctx.beginPath();ctx.moveTo(15,0);ctx.lineTo(-11,-11);ctx.lineTo(-7,0);ctx.lineTo(-11,11);ctx.closePath();ctx.fill();}if(u===selected){ctx.strokeStyle='#72dbe2';ctx.setLineDash([3,3]);ctx.beginPath();ctx.arc(0,0,24,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);}health(u,-18,-22);ctx.restore();}
+  function health(o,x,y){ctx.fillStyle='#263a35';ctx.fillRect(x,y,36,3);ctx.fillStyle=o.owner==='player'?'#d5f36b':'#ff736e';ctx.fillRect(x,y,36*Math.max(0,o.hp/o.maxHp),3);}
+  function renderQueue(){if(!commander.queue?.length){queueEl.textContent='Nothing queued. Select a construction order.';return;}queueEl.innerHTML=commander.queue.map((q,i)=>'<div class="queue-item"><span>'+(i?'↳ ':'▶ ')+defs[q.type].name+'</span><em>'+Math.floor(q.progress*100)+'%</em></div>').join('');}
+  function frame(now){const dt=Math.min((now-last)/1000,.05);last=now;elapsed+=dt;spawnClock+=dt;if(spawnClock>28){spawnClock=0;enemyWave();}income(dt);tickBuild(dt);combat(dt);sparks.forEach(s=>s.life+=dt);for(let i=sparks.length-1;i>=0;i--)if(sparks[i].life>.4)sparks.splice(i,1);if(toastTimer>0&&(toastTimer-=dt)<=0)toastEl.classList.remove('show');draw();updatePanel();renderQueue();metalText.textContent=Math.floor(economy.metal);energyText.textContent=Math.floor(economy.energy);metalBar.style.width=(economy.metal/economy.metalCap*100)+'%';energyBar.style.width=(economy.energy/economy.energyCap*100)+'%';document.querySelector('#clock').textContent=new Date(elapsed*1000).toISOString().substring(14,19);requestAnimationFrame(frame);}
+  frame(last);
+})();
+</script>
+</body>
+</html>
