@@ -62,6 +62,7 @@
     .difficulty-row strong { color:var(--orange); font:600 13px 'Barlow Condensed'; letter-spacing:1px; }
     .difficulty-control input { width:100%; accent-color:var(--orange); cursor:pointer; }
     .difficulty-scale { display:flex; justify-content:space-between; color:#708b84; font-size:8px; letter-spacing:.5px; margin-top:4px; }
+    .difficulty-note { display:block; margin-top:7px; color:#78938c; font-size:8px; line-height:1.35; }
     button { color:var(--ink); border:1px solid #376159; background:#1a302e; padding:8px 8px; text-align:left; cursor:pointer; font:500 10px 'IBM Plex Mono'; transition:background .15s,border .15s,transform .15s; }
     button:hover { background:#294943; border-color:var(--lime); transform:translateY(-1px); }
     button:disabled { opacity:.38; cursor:not-allowed; transform:none; }
@@ -145,6 +146,7 @@
           <div class="difficulty-row"><span>ENEMY PRESSURE</span><strong id="difficultyValue">STANDARD</strong></div>
           <input id="difficultySlider" type="range" min="1" max="5" step="1" value="3" aria-label="Enemy difficulty">
           <div class="difficulty-scale"><span>CALM</span><span>STANDARD</span><span>BRUTAL</span></div>
+          <small class="difficulty-note">Each step increases wave size and enemy strength. Change it before the next wave to adjust pressure.</small>
         </div></section>
       </div>
       <div class="sidebar-info">
@@ -226,6 +228,7 @@
       mex: { name: 'METAL EXTRACTOR', cost: { metal: 80, energy: 110 }, kind: 'structure', radius: 28 },
       solar: { name: 'SOLAR ARRAY', cost: { metal: 70, energy: 90 }, kind: 'structure', radius: 28 },
       warehouse: { name: 'MATERIAL WAREHOUSE', cost: { metal: 120, energy: 80 }, kind: 'structure', radius: 30 },
+      base: { name: 'FORWARD BASE', cost: { metal: 0, energy: 0 }, kind: 'base', radius: 32 },
       wall: { name: 'WALL', cost: { metal: 20, energy: 10 }, kind: 'wall', radius: 12 },
     },
   };
@@ -237,14 +240,21 @@
   const buildings = [], units = [], wrecks = [], sparks = [], walls = [];
   const matchState = { value: 'playing' };
   const waveSystem = { interval: 28, timer: 28, pending: false, preview: null, ready: false };
-  const GAME = { paused: false, speed: 1, level: 0, started: false, buildingPhase: false, buildTime: 10 };
+  const GAME = { paused: false, speed: 1, level: 0, started: false, buildingPhase: false, buildTime: 10, buildStartedAt: 0, buildPausedAt: 0 };
   const difficulty = { value: 3, labels: ['CALM', 'EASY', 'STANDARD', 'HARD', 'BRUTAL'] };
   const LEVELS = [
-    { name: 'SECTOR 07', waveInterval: 28, enemyScale: 1, nextLevelAt: 35 },
-    { name: 'BATTLELINE', waveInterval: 24, enemyScale: 1.35, nextLevelAt: 75 },
-    { name: 'FALLOUT', waveInterval: 20, enemyScale: 1.7, nextLevelAt: 115 },
-    { name: 'NEXUS', waveInterval: 18, enemyScale: 2.1, nextLevelAt: Infinity },
+    { name: 'SECTOR 07', waveInterval: 28, enemyScale: 1 },
+    { name: 'BATTLELINE', waveInterval: 26, enemyScale: 1.2 },
+    { name: 'OUTER RIM', waveInterval: 24, enemyScale: 1.4 },
+    { name: 'FALLOUT', waveInterval: 22, enemyScale: 1.65 },
+    { name: 'RED ZONE', waveInterval: 20, enemyScale: 1.9 },
+    { name: 'IRON WASTE', waveInterval: 19, enemyScale: 2.15 },
+    { name: 'BLACK TIDE', waveInterval: 18, enemyScale: 2.4 },
+    { name: 'DEAD STAR', waveInterval: 16, enemyScale: 2.7 },
+    { name: 'LAST FRONT', waveInterval: 15, enemyScale: 3.05 },
+    { name: 'NEXUS', waveInterval: 13, enemyScale: 3.4 },
   ];
+  let enemyGrowthLevel = 0;
   let wallMode = false;
   let warehouseMode = false;
   let warningBanner = null;
@@ -349,6 +359,11 @@
   function world(e){ const r=canvas.getBoundingClientRect(); return { x:(e.clientX - r.left)/view.sx, y:(e.clientY - r.top)/view.sy }; }
   function dist(a, b){ return Math.hypot(a.x - b.x, a.y - b.y); }
   function say(text){ toastEl.textContent = text; toastEl.classList.add('show'); toastTimer = 2; }
+  function updateConstructionDisplay(){
+    const seconds = Math.ceil(GAME.buildTime);
+    document.querySelector('#buildPhase').textContent = `CONSTRUCTION PHASE // ${seconds}s`;
+    waveCountdown.textContent = `BUILD PHASE ${seconds}s`;
+  }
   function getFocusConfig(){ return CONFIG.focusTypes[economy.player.focus] || CONFIG.focusTypes.fire; }
   function applyFocusTheme(){
     const focus = getFocusConfig();
@@ -363,7 +378,7 @@
   function getHostileTargets(owner){
     const hostile = [];
     for (const unit of units) { if (unit.owner !== owner && unit.hp > 0) hostile.push(unit); }
-    for (const building of buildings) { if (building.kind === 'castle' && building.owner !== owner && building.hp > 0) hostile.push(building); }
+    for (const building of buildings) { if ((building.kind === 'castle' || building.kind === 'base') && building.owner !== owner && building.hp > 0) hostile.push(building); }
     for (const wall of walls) { if (wall.owner !== owner && wall.hp > 0) hostile.push(wall); }
     return hostile;
   }
@@ -437,9 +452,32 @@
     return [];
   }
 
+  function getEnemyInfrastructure() {
+    const bases = buildings.filter((building) => building.owner === 'enemy' && (building.kind === 'castle' || building.kind === 'base') && building.hp > 0).length;
+    const materialMakers = buildings.filter((building) => building.owner === 'enemy' && building.type === 'mex' && building.hp > 0).length;
+    return { bases, materialMakers };
+  }
+
+  function growEnemyForLevel(levelIndex) {
+    const growthSpots = [
+      { x: 820, y: 180 }, { x: 760, y: 540 }, { x: 680, y: 190 },
+      { x: 620, y: 520 }, { x: 560, y: 180 }, { x: 500, y: 540 },
+      { x: 760, y: 180 }, { x: 680, y: 540 }, { x: 600, y: 180 },
+    ];
+    while (enemyGrowthLevel < levelIndex && enemyGrowthLevel < growthSpots.length) {
+      const spot = growthSpots[enemyGrowthLevel];
+      enemyGrowthLevel += 1;
+      addStructure('base', spot.x, spot.y, 'enemy');
+      addStructure('mex', spot.x - 34, spot.y + 42, 'enemy');
+      addStructure('mex', spot.x + 34, spot.y + 42, 'enemy');
+      say(`ENEMY EXPANSION // BASE ${enemyGrowthLevel + 1} ONLINE`);
+    }
+  }
+
   function getCurrentLevelConfig() {
     const levelIndex = Math.min(LEVELS.length - 1, Math.floor(elapsed / 35));
     GAME.level = levelIndex;
+    growEnemyForLevel(levelIndex);
     return LEVELS[levelIndex];
   }
 
@@ -493,6 +531,13 @@
     const pauseButton = document.querySelector('#pauseButton');
     pauseButton.addEventListener('click', () => {
       GAME.paused = !GAME.paused;
+      if (GAME.buildingPhase) {
+        if (GAME.paused) GAME.buildPausedAt = performance.now();
+        else if (GAME.buildPausedAt) {
+          GAME.buildStartedAt += performance.now() - GAME.buildPausedAt;
+          GAME.buildPausedAt = 0;
+        }
+      }
       pauseButton.textContent = GAME.paused ? 'RESUME' : 'PAUSE';
       say(GAME.paused ? 'GAME PAUSED' : 'GAME RESUMED');
     });
@@ -557,10 +602,13 @@
       GAME.started = true;
       GAME.buildingPhase = true;
       GAME.buildTime = 10;
+      GAME.buildStartedAt = performance.now();
+      GAME.buildPausedAt = 0;
       elapsed = 0;
       waveSystem.timer = getCurrentLevelConfig().waveInterval;
       document.querySelector('#startScreen').hidden = true;
       document.querySelector('#buildPhase').hidden = false;
+      updateConstructionDisplay();
         say(`${CONFIG.focusTypes[economy.player.focus].name} FOCUS // BUILD FOR 10s`);
     });
   }
@@ -743,10 +791,12 @@
   function updateEconomy(dt) {
     const playerCastle = getCastle('player');
     const enemyCastle = getCastle('enemy');
+    const enemyInfrastructure = getEnemyInfrastructure();
     const playerFactor = playerCastle ? CONFIG.economy.incomeCurve(playerCastle.hp, playerCastle.maxHp) : 0;
     const enemyFactor = enemyCastle ? CONFIG.economy.incomeCurve(enemyCastle.hp, enemyCastle.maxHp) : 0;
     const playerIncome = CONFIG.economy.baseIncome * playerFactor;
-    const enemyIncome = CONFIG.economy.baseIncome * enemyFactor;
+    const enemyGrowth = 1 + Math.max(0, enemyInfrastructure.bases - 1) * 0.12 + Math.max(0, enemyInfrastructure.materialMakers - 2) * 0.04;
+    const enemyIncome = CONFIG.economy.baseIncome * enemyFactor * enemyGrowth;
     const warehouses = buildings.filter((building) => building.type === 'warehouse' && building.owner === 'player' && building.hp > 0).length;
     const focusBonus = getFocusConfig().warehouseYield;
     const warehouseIncome = warehouses * 8 * focusBonus;
@@ -886,7 +936,7 @@
     ctx.save();
     ctx.translate(structure.x, structure.y);
     const color = structure.owner === 'player' ? '#d5f36b' : '#ff736e';
-    ctx.fillStyle = structure.type === 'mex' ? '#586c3c' : structure.type === 'warehouse' ? '#795a3d' : '#356b70';
+    ctx.fillStyle = structure.type === 'mex' ? '#586c3c' : structure.type === 'warehouse' ? '#795a3d' : structure.type === 'base' ? '#583d58' : '#356b70';
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;
     ctx.fillRect(-18, -18, 36, 36);
@@ -894,7 +944,7 @@
     ctx.fillStyle = '#dfeecf';
     ctx.font = 'bold 14px Barlow Condensed';
     ctx.textAlign = 'center';
-    ctx.fillText(structure.type === 'mex' ? 'M' : structure.type === 'warehouse' ? 'W' : 'E', 0, 6);
+    ctx.fillText(structure.type === 'mex' ? 'M' : structure.type === 'warehouse' ? 'W' : structure.type === 'base' ? 'B' : 'E', 0, 6);
     ctx.textAlign = 'left';
     ctx.fillStyle = color;
     ctx.fillRect(-20, 22, 40, 4);
@@ -1026,8 +1076,10 @@
 
   function getWavePreview() {
     const level = getCurrentLevelConfig();
+    const enemyInfrastructure = getEnemyInfrastructure();
     const difficultyScale = 0.7 + difficulty.value * 0.2;
-    const baseCount = Math.round((2 + Math.min(6, Math.floor(elapsed / 18))) * level.enemyScale * difficultyScale);
+    const infrastructureScale = 1 + Math.max(0, enemyInfrastructure.bases - 1) * 0.12 + Math.max(0, enemyInfrastructure.materialMakers - 2) * 0.04;
+    const baseCount = Math.round((2 + Math.min(6, Math.floor(elapsed / 18))) * level.enemyScale * difficultyScale * infrastructureScale);
     const raiders = Math.max(1, Math.ceil(baseCount * 0.7));
     const artillery = Math.max(0, Math.ceil(baseCount * 0.25));
     const titans = elapsed > 60 && baseCount > 4 ? Math.max(1, Math.round(level.enemyScale * 0.4)) : 0;
@@ -1036,7 +1088,8 @@
 
   function spawnEnemyWave() {
     const preview = getWavePreview();
-    const enemyStrength = 0.8 + difficulty.value * 0.15;
+    const infrastructure = getEnemyInfrastructure();
+    const enemyStrength = (0.8 + difficulty.value * 0.15) * (1 + Math.max(0, infrastructure.bases - 1) * 0.04 + Math.max(0, infrastructure.materialMakers - 2) * 0.015);
     const spawnPadding = 90;
     const enemySpawns = [
       { x: 930 + spawnPadding, y: 240 },
@@ -1151,9 +1204,8 @@
     if (!GAME.paused && GAME.started) {
       elapsed += stepDt;
       if (GAME.buildingPhase) {
-        GAME.buildTime = Math.max(0, GAME.buildTime - stepDt);
-        document.querySelector('#buildPhase').textContent = `CONSTRUCTION PHASE // ${Math.ceil(GAME.buildTime)}s`;
-        waveCountdown.textContent = `BUILD PHASE ${Math.ceil(GAME.buildTime)}s`;
+        GAME.buildTime = Math.max(0, 10 - ((now - GAME.buildStartedAt) / 1000));
+        updateConstructionDisplay();
         if (GAME.buildTime <= 0) {
           GAME.buildingPhase = false;
           document.querySelector('#buildPhase').hidden = true;
