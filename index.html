@@ -87,6 +87,14 @@
     .legend span:nth-child(4):before { background:#9eaa9b; }
     .toast { position:absolute; top:95px; right:28px; transform:none; color:#071211; background:var(--lime); padding:7px 12px; font-size:10px; font-weight:600; letter-spacing:.5px; opacity:0; pointer-events:none; transition:opacity .2s; border:1px solid rgba(7,18,17,.25); box-shadow:0 4px 18px rgba(0,0,0,.25); }
     .toast.show { opacity:1; }
+    .wave-review { position:absolute; z-index:4; top:50%; left:50%; transform:translate(-50%,-50%); width:min(440px,calc(100% - 36px)); border:1px solid var(--lime); background:#10201e; padding:20px; box-shadow:0 12px 40px rgba(0,0,0,.4); }
+    .wave-review h2 { margin:0 0 4px; color:var(--lime); font:700 25px 'Barlow Condensed'; letter-spacing:1.5px; }
+    .wave-review .review-kicker { color:var(--orange); font-size:9px; letter-spacing:1px; }
+    .review-grid { display:grid; grid-template-columns:1fr 1fr; gap:7px; margin:15px 0; }
+    .review-stat { padding:8px; background:#0c1918; border:1px solid #34504a; color:var(--muted); font-size:9px; }
+    .review-stat b { display:block; color:var(--ink); font:600 17px 'Barlow Condensed'; margin-top:3px; }
+    .review-story { border-left:2px solid var(--cyan); padding:7px 9px; color:#a9beb8; font-size:9px; line-height:1.5; margin-bottom:14px; }
+    .review-continue { width:100%; text-align:center; background:var(--lime); color:#071211; border-color:var(--lime); }
     @media (max-width:850px) { body { overflow:auto; } .shell { height:auto; min-height:100vh; display:block; } header { height:auto; min-height:76px; flex-wrap:wrap; gap:12px; padding:14px; } .status { gap:10px; } .resource { min-width:100px; } main { height:68vh; min-height:430px; } aside { border:0; border-top:1px solid var(--line); overflow:visible; } }
   </style>
 </head>
@@ -111,6 +119,7 @@
       <div class="hint">LMB SELECT / RMB MOVE • CLICK BUILDING TO PLACE • R TO RECLAIM</div>
       <div id="buildPhase" class="build-phase" hidden>CONSTRUCTION PHASE // 10s</div>
       <div id="toast" class="toast"></div>
+      <div id="waveReview" class="wave-review" hidden></div>
       <div id="startScreen" class="start-screen">
         <div class="start-card">
           <div class="eyebrow">MISSION SETUP // SECTOR 07</div>
@@ -156,6 +165,7 @@
       </div></section>
       <section><h3>CASTLE STATUS</h3><div class="queue" id="queue">No active threat. Your castle is stable.</div></section>
       <section><h3>SECTOR NOTES</h3><div class="sub" style="margin:0">Enemy reinforcements arrive every 28 seconds. Destroyed assets become wreckage. Bring the commander close and press <b style="color:var(--lime)">R</b> to reclaim metal.</div></section>
+      <section><h3>WAR RECORD</h3><div class="sub" id="warRecord" style="margin:0">0 DEATHS // 0 HITS // 0M GATHERED</div></section>
       <section><h3>FIELD LEGEND</h3><div class="legend"><span>YOUR FORCES</span><span>HOSTILES</span><span>PROJECTILES</span><span>WRECKAGE</span></div></section>
       </div>
     </aside>
@@ -239,7 +249,12 @@
   };
   const buildings = [], units = [], wrecks = [], sparks = [], walls = [];
   const matchState = { value: 'playing' };
-  const waveSystem = { interval: 28, timer: 28, pending: false, preview: null, ready: false };
+  const waveSystem = { interval: 28, timer: 28, pending: false, preview: null, ready: false, number: 0, activeEnemyCount: 0, currentStats: null, reviewShown: false };
+  const warStats = {
+    deaths: { player: 0, enemy: 0 },
+    hits: { player: 0, enemy: 0 },
+    gathered: { metal: 0, energy: 0, aether: 0 },
+  };
   const GAME = { paused: false, speed: 1, level: 0, started: false, buildingPhase: false, buildTime: 10, buildStartedAt: 0, buildPausedAt: 0 };
   const difficulty = { value: 3, labels: ['CALM', 'EASY', 'STANDARD', 'HARD', 'BRUTAL'] };
   const LEVELS = [
@@ -253,6 +268,18 @@
     { name: 'DEAD STAR', waveInterval: 16, enemyScale: 2.7 },
     { name: 'LAST FRONT', waveInterval: 15, enemyScale: 3.05 },
     { name: 'NEXUS', waveInterval: 13, enemyScale: 3.4 },
+  ];
+  const STORY_BEATS = [
+    'The Helix Relay wakes beneath the dust. Your small fleet is the only signal still answering.',
+    'A rival command has found the relay coordinates. Their engines burn cold, but their numbers rise.',
+    'The frontier folds around a second sun. Every material maker they claim feeds a larger machine.',
+    'A silent moon broadcasts a map made of gravity. The next battle will decide who can read it.',
+    'The enemy has begun building forward bases inside the old evacuation lanes.',
+    'Your scouts report a fleet assembled from salvaged hulls and unfamiliar alloys.',
+    'The relay is not a weapon. It is a door, and something on the far side has noticed the war.',
+    'The opposing network now grows faster than its commanders can explain.',
+    'Only the inner bastion remains between the relay and a system-wide blackout.',
+    'At the Nexus, both fleets receive the same transmission: choose what survives the crossing.',
   ];
   let enemyGrowthLevel = 0;
   let wallMode = false;
@@ -589,6 +616,13 @@
       document.querySelector('#tutorialSection').hidden = true;
     });
 
+    document.querySelector('#waveReview').addEventListener('click', (event) => {
+      if (!event.target.closest('#reviewContinue')) return;
+      document.querySelector('#waveReview').hidden = true;
+      GAME.paused = false;
+      document.querySelector('#pauseButton').textContent = 'PAUSE';
+    });
+
     document.querySelectorAll('[data-focus]').forEach((button) => {
       button.addEventListener('click', () => {
         document.querySelectorAll('[data-focus]').forEach((option) => option.classList.remove('selected'));
@@ -737,6 +771,8 @@
     if (!target || target.hp <= 0) return;
     const multiplier = getElementalMultiplier(attacker, target);
     target.hp -= amount * multiplier;
+    warStats.hits[attacker.owner] += 1;
+    if (waveSystem.currentStats) waveSystem.currentStats.hits += 1;
     sparks.push({ x: target.x, y: target.y, life: 0, dx: (Math.random() - 0.5) * 42, dy: (Math.random() - 0.5) * 42 });
     if (target.hp <= 0) target.hp = 0;
   }
@@ -806,9 +842,15 @@
     const focusBonus = getFocusConfig().warehouseYield;
     const warehouseIncome = warehouses * 8 * focusBonus;
 
+    const previousMetal = economy.player.metal;
+    const previousEnergy = economy.player.energy;
+    const previousAether = economy.player.aether;
     economy.player.metal = Math.min(CONFIG.economy.metalCap, economy.player.metal + (playerIncome + warehouseIncome) * dt);
     economy.player.energy = Math.min(CONFIG.economy.energyCap, economy.player.energy + (playerIncome * 0.75) * dt);
     economy.player.aether = Math.min(CONFIG.economy.aetherCap, economy.player.aether + (playerIncome * 0.18) * dt);
+    warStats.gathered.metal += Math.max(0, economy.player.metal - previousMetal);
+    warStats.gathered.energy += Math.max(0, economy.player.energy - previousEnergy);
+    warStats.gathered.aether += Math.max(0, economy.player.aether - previousAether);
     economy.enemy.metal = Math.min(CONFIG.economy.metalCap, economy.enemy.metal + enemyIncome * dt);
     economy.enemy.energy = Math.min(CONFIG.economy.energyCap, economy.enemy.energy + (enemyIncome * 0.75) * dt);
   }
@@ -867,11 +909,23 @@
     for (let i = units.length - 1; i >= 0; i--) {
       const unit = units[i];
       if (unit.hp <= 0) {
+        warStats.deaths[unit.owner] += 1;
+        if (waveSystem.currentStats) {
+          if (unit.owner === 'player') waveSystem.currentStats.playerDeaths += 1;
+          if (unit.owner === 'enemy') waveSystem.currentStats.enemyDeaths += 1;
+        }
+        if (unit.owner === 'enemy' && unit.waveNumber === waveSystem.number) {
+          waveSystem.activeEnemyCount = Math.max(0, waveSystem.activeEnemyCount - 1);
+        }
         wrecks.push({ x: unit.x, y: unit.y, value: unit.type === 'titan' ? 95 : unit.type === 'artillery' ? 55 : 30, life: 0 });
         if (selected === unit) selected = getCastle('player');
         units.splice(i, 1);
         say('ASSET LOST // WRECKAGE AVAILABLE');
       }
+    }
+
+    if (waveSystem.currentStats && waveSystem.activeEnemyCount === 0 && !waveSystem.reviewShown && waveSystem.number > 0 && matchState.value === 'playing') {
+      showWaveReview();
     }
 
     for (let i = walls.length - 1; i >= 0; i--) {
@@ -1095,6 +1149,17 @@
     const preview = getWavePreview();
     const infrastructure = getEnemyInfrastructure();
     const enemyStrength = (0.8 + difficulty.value * 0.15) * (1 + Math.max(0, infrastructure.bases - 1) * 0.04 + Math.max(0, infrastructure.materialMakers - 2) * 0.015);
+    waveSystem.number += 1;
+    waveSystem.activeEnemyCount = preview.total;
+    waveSystem.reviewShown = false;
+    waveSystem.currentStats = {
+      number: waveSystem.number,
+      level: GAME.level,
+      playerDeaths: 0,
+      enemyDeaths: 0,
+      hits: 0,
+      resourceStart: { ...warStats.gathered },
+    };
     const spawnPadding = 90;
     const enemySpawns = [
       { x: 930 + spawnPadding, y: 240 },
@@ -1112,6 +1177,7 @@
       const x = spawn.x + (Math.random() * 55 - 28);
       const y = spawn.y + (Math.random() * 90 - 45);
       const enemy = addUnit(unitType, x, y, 'enemy');
+      enemy.waveNumber = waveSystem.number;
       enemy.hp *= enemyStrength;
       enemy.maxHp *= enemyStrength;
       enemy.damage *= enemyStrength;
@@ -1125,6 +1191,32 @@
 
     waveSystem.preview = preview;
     say(`WAVE CONFIRMED // ${preview.total} ENEMIES`);
+  }
+
+  function showWaveReview() {
+    const review = waveSystem.currentStats;
+    if (!review) return;
+    const level = LEVELS[review.level] || LEVELS[0];
+    const metal = Math.floor(warStats.gathered.metal - review.resourceStart.metal);
+    const energy = Math.floor(warStats.gathered.energy - review.resourceStart.energy);
+    const aether = Math.floor(warStats.gathered.aether - review.resourceStart.aether);
+    const waveReview = document.querySelector('#waveReview');
+    waveReview.innerHTML = `
+      <div class="review-kicker">AFTER-ACTION REPORT // WAVE ${review.number}</div>
+      <h2>FRONTLINE REVIEW</h2>
+      <div class="review-grid">
+        <div class="review-stat">YOUR DEATHS<b>${review.playerDeaths}</b></div>
+        <div class="review-stat">ENEMY DEATHS<b>${review.enemyDeaths}</b></div>
+        <div class="review-stat">HITS LANDED<b>${review.hits}</b></div>
+        <div class="review-stat">RESOURCES<b>${metal}M / ${energy}E / ${aether}A</b></div>
+      </div>
+      <div class="review-story"><b>${level.name}</b> // ${STORY_BEATS[review.level] || STORY_BEATS[0]}</div>
+      <button id="reviewContinue" class="review-continue" type="button">CONTINUE TO NEXT WAVE</button>
+    `;
+    waveReview.hidden = false;
+    waveSystem.reviewShown = true;
+    GAME.paused = true;
+    document.querySelector('#pauseButton').textContent = 'RESUME';
   }
 
   function updateThreat() {
@@ -1262,6 +1354,7 @@
     energyBar.style.width = `${Math.min(100, (economy.player.energy / CONFIG.economy.energyCap) * 100)}%`;
     aetherBar.style.width = `${Math.min(100, (economy.player.aether / CONFIG.economy.aetherCap) * 100)}%`;
     document.querySelector('#clock').textContent = `${new Date(elapsed * 1000).toISOString().substring(14, 19)} ELAPSED`;
+    document.querySelector('#warRecord').textContent = `${warStats.deaths.player} DEATHS // ${warStats.hits.player} HITS // ${Math.floor(warStats.gathered.metal)}M GATHERED`;
 
     requestAnimationFrame(frame);
   }
