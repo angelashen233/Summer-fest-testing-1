@@ -55,7 +55,7 @@
     .legend span:nth-child(2):before { background:var(--red); }
     .legend span:nth-child(3):before { background:var(--orange); }
     .legend span:nth-child(4):before { background:#9eaa9b; }
-    .toast { position:absolute; top:95px; left:50%; transform:translateX(-50%); color:#071211; background:var(--lime); padding:7px 12px; font-size:10px; font-weight:600; letter-spacing:.5px; opacity:0; pointer-events:none; transition:opacity .2s; }
+    .toast { position:absolute; top:95px; right:28px; transform:none; color:#071211; background:var(--lime); padding:7px 12px; font-size:10px; font-weight:600; letter-spacing:.5px; opacity:0; pointer-events:none; transition:opacity .2s; border:1px solid rgba(7,18,17,.25); box-shadow:0 4px 18px rgba(0,0,0,.25); }
     .toast.show { opacity:1; }
     @media (max-width:850px) { body { overflow:auto; } .shell { height:auto; min-height:100vh; display:block; } header { height:auto; min-height:76px; flex-wrap:wrap; gap:12px; padding:14px; } .status { gap:10px; } .resource { min-width:100px; } main { height:68vh; min-height:430px; } aside { border:0; border-top:1px solid var(--line); } }
   </style>
@@ -218,6 +218,7 @@
 
   function addUnit(type, x, y, owner = 'player') {
     const def = CONFIG.unitTypes[type];
+    const sizeScale = type === 'titan' ? 1.6 : type === 'artillery' ? 1.15 : 1;
     const u = {
       type,
       x,
@@ -234,7 +235,8 @@
       target: null,
       path: [],
       pathTimer: 0,
-      radius: 16,
+      radius: 16 * sizeScale,
+      sizeScale,
     };
     units.push(u);
     return u;
@@ -724,6 +726,7 @@
   }
 
   function drawUnitUnit(unit) {
+    const size = unit.sizeScale || 1;
     ctx.save();
     ctx.translate(unit.x, unit.y);
     const color = unit.owner === 'player' ? '#d5f36b' : '#ff736e';
@@ -731,17 +734,22 @@
     ctx.fillStyle = color;
     ctx.strokeStyle = accent;
     ctx.lineWidth = 2;
+    ctx.scale(size, size);
 
     if (unit.type === 'titan') {
       ctx.fillRect(-15, -10, 30, 20);
       ctx.fillStyle = '#263a35';
       ctx.fillRect(-7, -16, 14, 6);
+      ctx.fillStyle = color;
+      ctx.fillRect(-20, -3, 40, 6);
     } else if (unit.type === 'artillery') {
       ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       ctx.strokeStyle = '#0b1716';
       ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(16, -8); ctx.stroke();
     } else {
       ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-12, -11); ctx.lineTo(-7, 0); ctx.lineTo(-12, 11); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#0b1716';
+      ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(10, 0); ctx.stroke();
     }
 
     ctx.fillStyle = '#263a35';
@@ -820,16 +828,16 @@
     ctx.font = '700 15px Barlow Condensed';
     ctx.fillText(`LEVEL ${GAME.level + 1} // ${level.name}`, 54, 39);
     if (warningBanner) {
-      ctx.fillStyle = 'rgba(7, 18, 17, 0.7)';
-      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = 'rgba(10, 25, 23, 0.9)';
+      ctx.fillRect(W - 290, 24, 240, 54);
+      ctx.strokeStyle = '#d5f36b';
+      ctx.strokeRect(W - 290, 24, 240, 54);
       ctx.fillStyle = '#d5f36b';
-      ctx.font = '700 30px Barlow Condensed';
-      ctx.textAlign = 'center';
-      ctx.fillText(warningBanner.text, W / 2, H / 2);
-      ctx.font = '12px IBM Plex Mono';
+      ctx.font = '700 16px Barlow Condensed';
+      ctx.fillText('NEW ENEMY OBSERVED', W - 275, 44);
       ctx.fillStyle = '#e9f4f0';
-      ctx.fillText('ENEMY CONTACT DETECTED', W / 2, H / 2 + 26);
-      ctx.textAlign = 'left';
+      ctx.font = '11px IBM Plex Mono';
+      ctx.fillText('BE PREPARED', W - 275, 60);
     }
   }
 
@@ -846,17 +854,26 @@
     const preview = getWavePreview();
     const spawnPadding = 90;
     const enemySpawns = [
-      { type: 'raider', x: 930 + spawnPadding, y: 280 },
-      { type: 'raider', x: 980 + spawnPadding, y: 420 },
-      { type: 'artillery', x: 1000 + spawnPadding, y: 340 },
-      { type: 'raider', x: 1040 + spawnPadding, y: 520 },
-      { type: 'titan', x: 1030 + spawnPadding, y: 360 },
+      { x: 930 + spawnPadding, y: 240 },
+      { x: 980 + spawnPadding, y: 420 },
+      { x: 1010 + spawnPadding, y: 310 },
+      { x: 1045 + spawnPadding, y: 520 },
+      { x: 1035 + spawnPadding, y: 380 },
+      { x: 960 + spawnPadding, y: 590 },
     ];
 
+    let spawned = 0;
     for (let i = 0; i < preview.total; i++) {
-      const spawn = spawnSpawns[i % spawnSpawns.length];
+      const spawn = enemySpawns[i % enemySpawns.length];
       const unitType = i < preview.raiders ? 'raider' : i < preview.raiders + preview.artillery ? 'artillery' : 'titan';
-      addUnit(unitType, spawn.x + (Math.random() * 55 - 28), spawn.y + (Math.random() * 80 - 40), 'enemy');
+      const x = spawn.x + (Math.random() * 55 - 28);
+      const y = spawn.y + (Math.random() * 90 - 45);
+      if (unitType === 'titan' && spawned % 2 === 0) {
+        addUnit(unitType, x + 20, y, 'enemy');
+      } else {
+        addUnit(unitType, x, y, 'enemy');
+      }
+      spawned += 1;
     }
 
     waveSystem.preview = preview;
@@ -945,6 +962,13 @@
       waveSystem.timer = Math.max(0, waveSystem.timer - stepDt);
       if (waveSystem.timer <= 0 && !waveSystem.pending) {
         waveSystem.pending = true;
+      }
+      if (waveSystem.pending && stepDt > 0 && !waveSystem.ready) {
+        if (waveSystem.timer <= 0) {
+          waveSystem.pending = false;
+          waveSystem.timer = getCurrentLevelConfig().waveInterval;
+          spawnEnemyWave();
+        }
       }
       updateEconomy(stepDt);
       updateCombat(stepDt);
