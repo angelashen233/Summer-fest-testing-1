@@ -33,6 +33,19 @@
     .resource.energy .bar span { background:var(--cyan); }
     #game { width:100%; flex:1; display:block; background:#091a18; cursor:crosshair; }
     .hint { position:absolute; bottom:15px; left:20px; padding:7px 10px; color:#9fb7b1; background:rgba(7,18,17,.82); border-left:2px solid var(--lime); font-size:10px; letter-spacing:.3px; pointer-events:none; }
+    .build-phase { position:absolute; top:95px; left:28px; padding:7px 10px; color:#071211; background:var(--orange); font-size:10px; font-weight:600; letter-spacing:.6px; }
+    .start-screen { position:absolute; inset:0; z-index:5; display:grid; place-items:center; background:rgba(7,18,17,.82); }
+    .start-card { width:min(500px,calc(100% - 36px)); border:1px solid var(--lime); background:#10201e; padding:28px; box-shadow:0 12px 40px rgba(0,0,0,.35); }
+    .start-card h2 { margin:0 0 6px; color:var(--lime); font:700 34px 'Barlow Condensed'; letter-spacing:2px; }
+    .start-card p { margin:0 0 20px; color:var(--muted); font-size:11px; line-height:1.6; }
+    .focus-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:7px; margin-bottom:18px; }
+    .focus-option { padding:12px 8px; text-align:center; }
+    .focus-option.selected { border-color:var(--lime); background:#294943; box-shadow:inset 0 -2px var(--lime); }
+    .focus-option strong { margin:0; }
+    .focus-summary { min-height:42px; margin:-7px 0 17px; padding:8px 10px; border-left:2px solid var(--lime); background:#0c1918; color:var(--muted); font-size:10px; line-height:1.5; }
+    .focus-summary b { color:var(--lime); font-weight:500; }
+    .start-button { width:100%; text-align:center; background:var(--lime); color:#071211; border-color:var(--lime); font-weight:600; }
+    .start-button:hover { background:#e5ff91; color:#071211; }
     aside { border-left:1px solid var(--line); background:var(--panel); padding:22px 18px; overflow:auto; }
     .eyebrow { color:var(--lime); font-size:10px; letter-spacing:2px; margin-bottom:6px; }
     aside h2 { font:600 25px 'Barlow Condensed'; letter-spacing:1px; margin:0 0 5px; }
@@ -88,7 +101,23 @@
       </header>
       <canvas id="game"></canvas>
       <div class="hint">LMB SELECT / RMB MOVE • CLICK BUILDING TO PLACE • R TO RECLAIM</div>
+      <div id="buildPhase" class="build-phase" hidden>CONSTRUCTION PHASE // 10s</div>
       <div id="toast" class="toast"></div>
+      <div id="startScreen" class="start-screen">
+        <div class="start-card">
+          <div class="eyebrow">MISSION SETUP // SECTOR 07</div>
+          <h2>CHOOSE YOUR FOCUS</h2>
+          <p>Select a focus before deployment. You will have 10 seconds to place a material-generating warehouse before the first wave begins.</p>
+          <div class="focus-grid">
+            <button class="focus-option selected" data-focus="fire" type="button"><strong>FIRE</strong><small>fast output</small></button>
+            <button class="focus-option" data-focus="water" type="button"><strong>WATER</strong><small>steady output</small></button>
+            <button class="focus-option" data-focus="wind" type="button"><strong>WIND</strong><small>rapid output</small></button>
+            <button class="focus-option" data-focus="dirt" type="button"><strong>DIRT</strong><small>metal output</small></button>
+          </div>
+          <div id="focusSummary" class="focus-summary"></div>
+          <button id="startButton" class="start-button" type="button">START MISSION</button>
+        </div>
+      </div>
     </main>
     <aside>
       <div class="eyebrow">COMMAND LINK // ONLINE</div>
@@ -98,6 +127,7 @@
       <section><h3>DEPLOY UNIT</h3><div id="unitButtons" class="build-grid"></div></section>
       <section><h3>DEFENCE</h3><div class="build-grid">
         <button id="wallButton" type="button"><strong>WALL</strong><small>20M / 10E · blocks path</small></button>
+        <button id="warehouseButton" type="button"><strong>WAREHOUSE</strong><small>120M / 80E · generates metal</small></button>
       </div></section>
       <section><h3>WAVE CONTROL</h3><div class="build-grid">
         <button id="waveReadyButton" type="button"><strong>READY FOR WAVE</strong><small>Confirm when you are prepared.</small></button>
@@ -152,6 +182,12 @@
         stone: { water: 1.45, fire: 0.75 },
       },
     },
+    focusTypes: {
+      fire: { name: 'FIRE', color: '#ff8a5c', accent: '#ffb36b', highlight: '#ffd08a', warehouseYield: 1.05, attackMultiplier: 1.18, moveSpeed: 0.95, pro: 'Ships deal +18% damage.', con: 'Warehouses produce 5% less metal.' },
+      water: { name: 'WATER', color: '#5dc9ff', accent: '#86e4ef', highlight: '#a5f1ff', warehouseYield: 1.15, attackMultiplier: 0.92, moveSpeed: 1, pro: 'Warehouses produce +15% metal.', con: 'Ships deal 8% less damage.' },
+      wind: { name: 'WIND', color: '#b6f27a', accent: '#c8f27a', highlight: '#b1f0df', warehouseYield: 1.1, attackMultiplier: 1, moveSpeed: 1.2, pro: 'Ships move 20% faster.', con: 'Warehouses produce less than Dirt focus.' },
+      dirt: { name: 'DIRT', color: '#d8b36a', accent: '#e49a57', highlight: '#9fd6bd', warehouseYield: 1.35, attackMultiplier: 0.9, moveSpeed: 0.85, pro: 'Warehouses produce +35% metal.', con: 'Ships deal 10% less damage and move slower.' },
+    },
     unitTypes: {
       raider: {
         name: 'RAIDER',
@@ -178,18 +214,19 @@
     structureTypes: {
       mex: { name: 'METAL EXTRACTOR', cost: { metal: 80, energy: 110 }, kind: 'structure', radius: 28 },
       solar: { name: 'SOLAR ARRAY', cost: { metal: 70, energy: 90 }, kind: 'structure', radius: 28 },
+      warehouse: { name: 'MATERIAL WAREHOUSE', cost: { metal: 120, energy: 80 }, kind: 'structure', radius: 30 },
       wall: { name: 'WALL', cost: { metal: 20, energy: 10 }, kind: 'wall', radius: 12 },
     },
   };
 
   const economy = {
-    player: { metal: 400, energy: 700, aether: 35, element: 'fire' },
+    player: { metal: 400, energy: 700, aether: 35, element: 'fire', focus: 'fire' },
     enemy: { metal: 0, energy: 0 },
   };
   const buildings = [], units = [], wrecks = [], sparks = [], walls = [];
   const matchState = { value: 'playing' };
   const waveSystem = { interval: 28, timer: 28, pending: false, preview: null, ready: false };
-  const GAME = { paused: false, speed: 1, level: 0 };
+  const GAME = { paused: false, speed: 1, level: 0, started: false, buildingPhase: false, buildTime: 10 };
   const difficulty = { value: 3, labels: ['CALM', 'EASY', 'STANDARD', 'HARD', 'BRUTAL'] };
   const LEVELS = [
     { name: 'SECTOR 07', waveInterval: 28, enemyScale: 1, nextLevelAt: 35 },
@@ -198,6 +235,7 @@
     { name: 'NEXUS', waveInterval: 18, enemyScale: 2.1, nextLevelAt: Infinity },
   ];
   let wallMode = false;
+  let warehouseMode = false;
   let warningBanner = null;
 
   function resize(){ const r=canvas.getBoundingClientRect(); view.w=r.width; view.h=r.height; view.sx=r.width/W; view.sy=r.height/H; canvas.width=r.width*devicePixelRatio; canvas.height=r.height*devicePixelRatio; ctx.setTransform(devicePixelRatio*view.sx,0,0,devicePixelRatio*view.sy,0,0); }
@@ -300,6 +338,15 @@
   function world(e){ const r=canvas.getBoundingClientRect(); return { x:(e.clientX - r.left)/view.sx, y:(e.clientY - r.top)/view.sy }; }
   function dist(a, b){ return Math.hypot(a.x - b.x, a.y - b.y); }
   function say(text){ toastEl.textContent = text; toastEl.classList.add('show'); toastTimer = 2; }
+  function getFocusConfig(){ return CONFIG.focusTypes[economy.player.focus] || CONFIG.focusTypes.fire; }
+  function applyFocusTheme(){
+    const focus = getFocusConfig();
+    document.documentElement.style.setProperty('--lime', focus.color);
+    document.documentElement.style.setProperty('--orange', focus.accent);
+    document.documentElement.style.setProperty('--cyan', focus.highlight);
+    const summary = document.querySelector('#focusSummary');
+    if (summary) summary.innerHTML = `<b>${focus.name}</b> // PRO: ${focus.pro} <span style="color:#ff736e">CON: ${focus.con}</span>`;
+  }
   function getCastle(owner){ return buildings.find(b => b.kind === 'castle' && b.owner === owner && b.hp > 0) || null; }
   function getEnemyOwner(owner){ return owner === 'player' ? 'enemy' : 'player'; }
   function getHostileTargets(owner){
@@ -409,10 +456,27 @@
 
     const wallButton = document.querySelector('#wallButton');
     wallButton.addEventListener('click', () => {
+      if (!GAME.started) return;
       wallMode = !wallMode;
+      warehouseMode = false;
       wallButton.style.borderColor = wallMode ? '#d5f36b' : '#376159';
       wallButton.style.background = wallMode ? '#294943' : '#1a302e';
       say(wallMode ? 'WALL PLACEMENT READY' : 'WALL MODE OFF');
+    });
+
+    const warehouseButton = document.querySelector('#warehouseButton');
+    warehouseButton.addEventListener('click', () => {
+      if (!GAME.started || !GAME.buildingPhase) {
+        say('WAREHOUSE BUILDING PHASE HAS ENDED');
+        return;
+      }
+      warehouseMode = !warehouseMode;
+      wallMode = false;
+      warehouseButton.style.borderColor = warehouseMode ? '#d5f36b' : '#376159';
+      warehouseButton.style.background = warehouseMode ? '#294943' : '#1a302e';
+      wallButton.style.borderColor = '#376159';
+      wallButton.style.background = '#1a302e';
+      say(warehouseMode ? 'WAREHOUSE PLACEMENT READY' : 'WAREHOUSE MODE OFF');
     });
 
     const pauseButton = document.querySelector('#pauseButton');
@@ -467,6 +531,26 @@
 
     document.querySelector('#tutorialClose').addEventListener('click', () => {
       document.querySelector('#tutorialSection').hidden = true;
+    });
+
+    document.querySelectorAll('[data-focus]').forEach((button) => {
+      button.addEventListener('click', () => {
+        document.querySelectorAll('[data-focus]').forEach((option) => option.classList.remove('selected'));
+        button.classList.add('selected');
+        economy.player.focus = button.dataset.focus;
+        applyFocusTheme();
+      });
+    });
+
+    document.querySelector('#startButton').addEventListener('click', () => {
+      GAME.started = true;
+      GAME.buildingPhase = true;
+      GAME.buildTime = 10;
+      elapsed = 0;
+      waveSystem.timer = getCurrentLevelConfig().waveInterval;
+      document.querySelector('#startScreen').hidden = true;
+      document.querySelector('#buildPhase').hidden = false;
+        say(`${CONFIG.focusTypes[economy.player.focus].name} FOCUS // BUILD FOR 10s`);
     });
   }
 
@@ -523,6 +607,35 @@
     say('WALL DEPLOYED');
   }
 
+  function placeWarehouse(x, y) {
+    if (!GAME.buildingPhase) {
+      say('WAREHOUSE BUILDING PHASE HAS ENDED');
+      return;
+    }
+    const warehouseCost = CONFIG.structureTypes.warehouse.cost;
+    if (!canAfford('player', warehouseCost)) {
+      say('NOT ENOUGH RESOURCES FOR WAREHOUSE');
+      return;
+    }
+
+    const cellSize = CONFIG.map.cellSize;
+    const snappedX = Math.round(x / cellSize) * cellSize + cellSize / 2;
+    const snappedY = Math.round(y / cellSize) * cellSize + cellSize / 2;
+    if (dist({ x: snappedX, y: snappedY }, playerCastle) < 70 || snappedX < 80 || snappedY < 80 || snappedX > W - 80 || snappedY > H - 80 || isRoadBlocked(snappedX, snappedY)) {
+      say('WAREHOUSE LOCATION IS BLOCKED');
+      return;
+    }
+
+    economy.player.metal -= warehouseCost.metal;
+    economy.player.energy -= warehouseCost.energy;
+    addStructure('warehouse', snappedX, snappedY, 'player');
+    warehouseMode = false;
+    const warehouseButton = document.querySelector('#warehouseButton');
+    warehouseButton.style.borderColor = '#376159';
+    warehouseButton.style.background = '#1a302e';
+    say(`${CONFIG.focusTypes[economy.player.focus].name} WAREHOUSE ONLINE`);
+  }
+
   function chooseNearestTarget(unit) {
     const hostile = getHostileTargets(unit.owner);
     let selectedTarget = null;
@@ -555,7 +668,8 @@
   }
 
   function applyAttack(attacker, target) {
-    const amount = attacker.damage ?? attacker.stats?.damage ?? 0;
+    const focusMultiplier = attacker.owner === 'player' ? getFocusConfig().attackMultiplier : 1;
+    const amount = (attacker.damage ?? attacker.stats?.damage ?? 0) * focusMultiplier;
     if (!target || target.hp <= 0) return;
     const multiplier = getElementalMultiplier(attacker, target);
     target.hp -= amount * multiplier;
@@ -566,6 +680,7 @@
   function updateUnit(unit, dt) {
     if (unit.hp <= 0) return;
     unit.cooldown = Math.max(0, (unit.cooldown || 0) - dt);
+    const moveSpeed = unit.moveSpeed * (unit.owner === 'player' ? getFocusConfig().moveSpeed : 1);
 
     const target = chooseNearestTarget(unit);
     if (target) {
@@ -597,7 +712,7 @@
       const dy = waypoint.y - unit.y;
       const len = Math.hypot(dx, dy);
       if (len > 0) {
-        const step = Math.min(len, unit.moveSpeed * dt);
+        const step = Math.min(len, moveSpeed * dt);
         unit.x += (dx / len) * step;
         unit.y += (dy / len) * step;
         if (len <= 5) unit.path.shift();
@@ -609,8 +724,8 @@
     const dy = destination.y - unit.y;
     const len = Math.hypot(dx, dy);
     if (len > 0) {
-      unit.x += (dx / len) * Math.min(len, unit.moveSpeed * dt);
-      unit.y += (dy / len) * Math.min(len, unit.moveSpeed * dt);
+      unit.x += (dx / len) * Math.min(len, moveSpeed * dt);
+      unit.y += (dy / len) * Math.min(len, moveSpeed * dt);
     }
   }
 
@@ -621,8 +736,11 @@
     const enemyFactor = enemyCastle ? CONFIG.economy.incomeCurve(enemyCastle.hp, enemyCastle.maxHp) : 0;
     const playerIncome = CONFIG.economy.baseIncome * playerFactor;
     const enemyIncome = CONFIG.economy.baseIncome * enemyFactor;
+    const warehouses = buildings.filter((building) => building.type === 'warehouse' && building.owner === 'player' && building.hp > 0).length;
+    const focusBonus = getFocusConfig().warehouseYield;
+    const warehouseIncome = warehouses * 8 * focusBonus;
 
-    economy.player.metal = Math.min(CONFIG.economy.metalCap, economy.player.metal + playerIncome * dt);
+    economy.player.metal = Math.min(CONFIG.economy.metalCap, economy.player.metal + (playerIncome + warehouseIncome) * dt);
     economy.player.energy = Math.min(CONFIG.economy.energyCap, economy.player.energy + (playerIncome * 0.75) * dt);
     economy.player.aether = Math.min(CONFIG.economy.aetherCap, economy.player.aether + (playerIncome * 0.18) * dt);
     economy.enemy.metal = Math.min(CONFIG.economy.metalCap, economy.enemy.metal + enemyIncome * dt);
@@ -757,7 +875,7 @@
     ctx.save();
     ctx.translate(structure.x, structure.y);
     const color = structure.owner === 'player' ? '#d5f36b' : '#ff736e';
-    ctx.fillStyle = structure.type === 'mex' ? '#586c3c' : '#356b70';
+    ctx.fillStyle = structure.type === 'mex' ? '#586c3c' : structure.type === 'warehouse' ? '#795a3d' : '#356b70';
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;
     ctx.fillRect(-18, -18, 36, 36);
@@ -765,7 +883,7 @@
     ctx.fillStyle = '#dfeecf';
     ctx.font = 'bold 14px Barlow Condensed';
     ctx.textAlign = 'center';
-    ctx.fillText(structure.type === 'mex' ? 'M' : 'E', 0, 6);
+    ctx.fillText(structure.type === 'mex' ? 'M' : structure.type === 'warehouse' ? 'W' : 'E', 0, 6);
     ctx.textAlign = 'left';
     ctx.fillStyle = color;
     ctx.fillRect(-20, 22, 40, 4);
@@ -965,7 +1083,12 @@
   }
 
   canvas.addEventListener('click', (e) => {
+    if (!GAME.started) return;
     const p = world(e);
+    if (warehouseMode) {
+      placeWarehouse(p.x, p.y);
+      return;
+    }
     if (wallMode) {
       placeWall(p.x, p.y);
       wallMode = false;
@@ -1006,6 +1129,7 @@
   });
 
   renderUnitButtons();
+  applyFocusTheme();
   updatePanel();
 
   function frame(now) {
@@ -1013,11 +1137,24 @@
     last = now;
     const stepDt = GAME.paused ? 0 : dt * GAME.speed;
 
-    if (!GAME.paused) {
+    if (!GAME.paused && GAME.started) {
       elapsed += stepDt;
+      if (GAME.buildingPhase) {
+        GAME.buildTime = Math.max(0, GAME.buildTime - stepDt);
+        document.querySelector('#buildPhase').textContent = `CONSTRUCTION PHASE // ${Math.ceil(GAME.buildTime)}s`;
+        waveCountdown.textContent = `BUILD PHASE ${Math.ceil(GAME.buildTime)}s`;
+        if (GAME.buildTime <= 0) {
+          GAME.buildingPhase = false;
+          document.querySelector('#buildPhase').hidden = true;
+          waveSystem.timer = getCurrentLevelConfig().waveInterval;
+          say('CONSTRUCTION COMPLETE // FIRST WAVE INBOUND');
+        }
+      }
     }
 
-    if (matchState.value === 'playing' && !GAME.paused) {
+    if (GAME.started && matchState.value === 'playing' && !GAME.paused) {
+      updateEconomy(stepDt);
+      if (!GAME.buildingPhase) {
       if (elapsed > 3 && !warningBanner) triggerBattleWarning();
       waveSystem.timer = Math.max(0, waveSystem.timer - stepDt);
       if (waveSystem.timer <= 0 && !waveSystem.pending) {
@@ -1030,9 +1167,9 @@
           spawnEnemyWave();
         }
       }
-      updateEconomy(stepDt);
       updateCombat(stepDt);
       updateThreat();
+      }
     }
 
     if (warningBanner) {
