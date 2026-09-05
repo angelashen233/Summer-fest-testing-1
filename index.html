@@ -573,7 +573,7 @@
       const index = cycle.indexOf(economy.player.element);
       economy.player.element = cycle[(index + 1) % cycle.length];
       const label = economy.player.element.toUpperCase();
-      elementButton.innerHTML = `<strong>ELEMENT: ${label}</strong><small>Counter: ${economy.player.element} > ${cycle[(cycle.indexOf(economy.player.element) + 1) % cycle.length]}</small>`;
+      elementButton.innerHTML = `<strong>ELEMENT: ${label}</strong><small>Counter: ${economy.player.element} > ${getCounterElement(economy.player.element)}</small>`;
       say(`ELEMENT CHANGED TO ${label}`);
     });
 
@@ -709,6 +709,11 @@
       }
     }
     return selectedTarget;
+  }
+
+  function getCounterElement(element) {
+    const counterTable = CONFIG.elemental.counters[element] || {};
+    return Object.entries(counterTable).sort((a, b) => b[1] - a[1])[0]?.[0] || 'none';
   }
 
   function getElementalMultiplier(attacker, target) {
