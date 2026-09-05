@@ -35,6 +35,7 @@
     .hint { position:absolute; bottom:15px; left:20px; padding:7px 10px; color:#9fb7b1; background:rgba(7,18,17,.82); border-left:2px solid var(--lime); font-size:10px; letter-spacing:.3px; pointer-events:none; }
     .build-phase { position:absolute; top:95px; left:28px; padding:7px 10px; color:#071211; background:var(--orange); font-size:10px; font-weight:600; letter-spacing:.6px; }
     .start-screen { position:absolute; inset:0; z-index:5; display:grid; place-items:center; background:rgba(7,18,17,.82); }
+    .start-screen[hidden] { display:none; }
     .start-card { width:min(500px,calc(100% - 36px)); border:1px solid var(--lime); background:#10201e; padding:28px; box-shadow:0 12px 40px rgba(0,0,0,.35); }
     .start-card h2 { margin:0 0 6px; color:var(--lime); font:700 34px 'Barlow Condensed'; letter-spacing:2px; }
     .start-card p { margin:0 0 20px; color:var(--muted); font-size:11px; line-height:1.6; }
@@ -46,31 +47,37 @@
     .focus-summary b { color:var(--lime); font-weight:500; }
     .start-button { width:100%; text-align:center; background:var(--lime); color:#071211; border-color:var(--lime); font-weight:600; }
     .start-button:hover { background:#e5ff91; color:#071211; }
-    aside { border-left:1px solid var(--line); background:var(--panel); padding:22px 18px; overflow:auto; }
+    .control-stack { border:1px solid var(--line); background:#10201e; padding:0 9px 9px; }
+    .control-stack section { margin-top:8px; padding-top:8px; }
+    .control-stack section:first-child { border-top:0; padding-top:9px; }
+    aside { border-left:1px solid var(--line); background:var(--panel); padding:14px 14px; overflow:hidden; }
     .eyebrow { color:var(--lime); font-size:10px; letter-spacing:2px; margin-bottom:6px; }
-    aside h2 { font:600 25px 'Barlow Condensed'; letter-spacing:1px; margin:0 0 5px; }
-    .sub { color:var(--muted); font-size:10px; line-height:1.5; margin-bottom:22px; }
-    section { border-top:1px solid var(--line); padding-top:16px; margin-top:17px; }
-    section h3 { font:500 12px 'Barlow Condensed'; letter-spacing:1.5px; color:var(--muted); margin:0 0 11px; }
+    aside h2 { font:600 23px 'Barlow Condensed'; letter-spacing:1px; margin:0 0 3px; }
+    .sub { color:var(--muted); font-size:9px; line-height:1.4; margin-bottom:10px; }
+    section { border-top:1px solid var(--line); padding-top:9px; margin-top:9px; }
+    section h3 { font:500 11px 'Barlow Condensed'; letter-spacing:1.5px; color:var(--muted); margin:0 0 7px; }
     .build-grid { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
     .difficulty-control { background:#0c1918; border:1px solid #34504a; padding:10px; }
     .difficulty-row { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:8px; font-size:10px; color:var(--muted); }
     .difficulty-row strong { color:var(--orange); font:600 13px 'Barlow Condensed'; letter-spacing:1px; }
     .difficulty-control input { width:100%; accent-color:var(--orange); cursor:pointer; }
     .difficulty-scale { display:flex; justify-content:space-between; color:#708b84; font-size:8px; letter-spacing:.5px; margin-top:4px; }
-    button { color:var(--ink); border:1px solid #376159; background:#1a302e; padding:10px 9px; text-align:left; cursor:pointer; font:500 11px 'IBM Plex Mono'; transition:background .15s,border .15s,transform .15s; }
+    button { color:var(--ink); border:1px solid #376159; background:#1a302e; padding:8px 8px; text-align:left; cursor:pointer; font:500 10px 'IBM Plex Mono'; transition:background .15s,border .15s,transform .15s; }
     button:hover { background:#294943; border-color:var(--lime); transform:translateY(-1px); }
     button:disabled { opacity:.38; cursor:not-allowed; transform:none; }
-    button strong { display:block; color:var(--lime); font:600 15px 'Barlow Condensed'; letter-spacing:.6px; margin-bottom:5px; }
-    button small { display:block; color:#9ab4ad; font-size:9px; line-height:1.35; }
-    .queue { min-height:54px; background:#0c1918; border:1px dashed #34504a; padding:10px; font-size:10px; color:#a9beb8; }
+    button strong { display:block; color:var(--lime); font:600 14px 'Barlow Condensed'; letter-spacing:.6px; margin-bottom:3px; }
+    button small { display:block; color:#9ab4ad; font-size:8px; line-height:1.25; }
+    .queue { min-height:42px; background:#0c1918; border:1px dashed #34504a; padding:8px; font-size:9px; color:#a9beb8; }
     .queue-item { display:flex; justify-content:space-between; margin-bottom:5px; color:var(--ink); }
     .queue-item em { color:var(--orange); font-style:normal; }
-    .tutorial { position:relative; background:#0c1918; border:1px solid #34504a; padding:11px 28px 11px 11px; color:#a9beb8; font-size:10px; line-height:1.55; }
+    .sidebar-info { display:grid; grid-template-columns:1fr 1fr; gap:0 9px; }
+    .sidebar-info #tutorialSection { grid-column:1 / -1; }
+    .sidebar-info section { margin-top:8px; padding-top:8px; }
+    .tutorial { position:relative; background:#0c1918; border:1px solid #34504a; padding:8px 25px 8px 8px; color:#a9beb8; font-size:8px; line-height:1.4; }
     .tutorial b { color:var(--lime); font-weight:500; }
     .tutorial-close { position:absolute; top:7px; right:7px; border:0; background:transparent; color:var(--muted); padding:2px 4px; font-size:13px; line-height:1; }
     .tutorial-close:hover { color:var(--lime); background:transparent; border:0; transform:none; }
-    .selected { background:#0d1b1a; border-left:2px solid var(--cyan); padding:11px; font-size:11px; line-height:1.6; }
+    .selected { background:#0d1b1a; border-left:2px solid var(--cyan); padding:8px; font-size:9px; line-height:1.4; }
     .selected b { color:var(--cyan); font-weight:500; }
     .legend { display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:9px; color:var(--muted); }
     .legend span:before { content:''; display:inline-block; width:8px; height:8px; margin-right:6px; background:var(--lime); }
@@ -79,7 +86,7 @@
     .legend span:nth-child(4):before { background:#9eaa9b; }
     .toast { position:absolute; top:95px; right:28px; transform:none; color:#071211; background:var(--lime); padding:7px 12px; font-size:10px; font-weight:600; letter-spacing:.5px; opacity:0; pointer-events:none; transition:opacity .2s; border:1px solid rgba(7,18,17,.25); box-shadow:0 4px 18px rgba(0,0,0,.25); }
     .toast.show { opacity:1; }
-    @media (max-width:850px) { body { overflow:auto; } .shell { height:auto; min-height:100vh; display:block; } header { height:auto; min-height:76px; flex-wrap:wrap; gap:12px; padding:14px; } .status { gap:10px; } .resource { min-width:100px; } main { height:68vh; min-height:430px; } aside { border:0; border-top:1px solid var(--line); } }
+    @media (max-width:850px) { body { overflow:auto; } .shell { height:auto; min-height:100vh; display:block; } header { height:auto; min-height:76px; flex-wrap:wrap; gap:12px; padding:14px; } .status { gap:10px; } .resource { min-width:100px; } main { height:68vh; min-height:430px; } aside { border:0; border-top:1px solid var(--line); overflow:visible; } }
   </style>
 </head>
 <body>
@@ -123,21 +130,24 @@
       <div class="eyebrow">COMMAND LINK // ONLINE</div>
       <h2>FIELD CONTROL</h2>
       <div class="sub">Keep the flow alive. Construction drains resources continuously until the job is done.</div>
-      <section><h3>SELECTED</h3><div class="selected" id="selected">COMMANDER <span style="color:#8ea6a0">// ready for orders</span></div></section>
-      <section><h3>DEPLOY UNIT</h3><div id="unitButtons" class="build-grid"></div></section>
-      <section><h3>DEFENCE</h3><div class="build-grid">
-        <button id="wallButton" type="button"><strong>WALL</strong><small>20M / 10E · blocks path</small></button>
-        <button id="warehouseButton" type="button"><strong>WAREHOUSE</strong><small>120M / 80E · generates metal</small></button>
-      </div></section>
-      <section><h3>WAVE CONTROL</h3><div class="build-grid">
-        <button id="waveReadyButton" type="button"><strong>READY FOR WAVE</strong><small>Confirm when you are prepared.</small></button>
-        <button id="elementButton" type="button"><strong>ELEMENT: FIRE</strong><small>Counter: fire > stone</small></button>
-      </div></section>
-      <section><h3>THREAT LEVEL</h3><div class="difficulty-control">
-        <div class="difficulty-row"><span>ENEMY PRESSURE</span><strong id="difficultyValue">STANDARD</strong></div>
-        <input id="difficultySlider" type="range" min="1" max="5" step="1" value="3" aria-label="Enemy difficulty">
-        <div class="difficulty-scale"><span>CALM</span><span>STANDARD</span><span>BRUTAL</span></div>
-      </div></section>
+      <div class="control-stack">
+        <section><h3>SELECTED</h3><div class="selected" id="selected">COMMANDER <span style="color:#8ea6a0">// ready for orders</span></div></section>
+        <section><h3>DEPLOY UNIT</h3><div id="unitButtons" class="build-grid"></div></section>
+        <section><h3>DEFENCE</h3><div class="build-grid">
+          <button id="wallButton" type="button"><strong>WALL</strong><small>20M / 10E · blocks path</small></button>
+          <button id="warehouseButton" type="button"><strong>WAREHOUSE</strong><small>120M / 80E · generates metal</small></button>
+        </div></section>
+        <section><h3>WAVE CONTROL</h3><div class="build-grid">
+          <button id="waveReadyButton" type="button"><strong>READY FOR WAVE</strong><small>Confirm when you are prepared.</small></button>
+          <button id="elementButton" type="button"><strong>ELEMENT: FIRE</strong><small>Counter: fire > stone</small></button>
+        </div></section>
+        <section><h3>THREAT LEVEL</h3><div class="difficulty-control">
+          <div class="difficulty-row"><span>ENEMY PRESSURE</span><strong id="difficultyValue">STANDARD</strong></div>
+          <input id="difficultySlider" type="range" min="1" max="5" step="1" value="3" aria-label="Enemy difficulty">
+          <div class="difficulty-scale"><span>CALM</span><span>STANDARD</span><span>BRUTAL</span></div>
+        </div></section>
+      </div>
+      <div class="sidebar-info">
       <section id="tutorialSection"><h3>QUICK TUTORIAL</h3><div class="tutorial">
         <button id="tutorialClose" class="tutorial-close" type="button" aria-label="Close tutorial">x</button>
         <b>PAUSE</b> anytime to plan. Resources refill over time. Deploy attacking ships from <b>DEPLOY UNIT</b>, but every ship costs metal and energy. Click <b>WALL</b> to place barriers; existing walls can be damaged and broken by attacks.
@@ -145,6 +155,7 @@
       <section><h3>CASTLE STATUS</h3><div class="queue" id="queue">No active threat. Your castle is stable.</div></section>
       <section><h3>SECTOR NOTES</h3><div class="sub" style="margin:0">Enemy reinforcements arrive every 28 seconds. Destroyed assets become wreckage. Bring the commander close and press <b style="color:var(--lime)">R</b> to reclaim metal.</div></section>
       <section><h3>FIELD LEGEND</h3><div class="legend"><span>YOUR FORCES</span><span>HOSTILES</span><span>PROJECTILES</span><span>WRECKAGE</span></div></section>
+      </div>
     </aside>
   </div>
 <script>
