@@ -639,11 +639,12 @@
       GAME.buildStartedAt = performance.now();
       GAME.buildPausedAt = 0;
       elapsed = 0;
+      last = performance.now();
       waveSystem.timer = getCurrentLevelConfig().waveInterval;
       document.querySelector('#startScreen').hidden = true;
       document.querySelector('#buildPhase').hidden = false;
       updateConstructionDisplay();
-        say(`${CONFIG.focusTypes[economy.player.focus].name} FOCUS // BUILD FOR 10s`);
+      say(`${CONFIG.focusTypes[economy.player.focus].name} FOCUS // BUILD FOR 10s`);
     });
   }
 
@@ -1307,6 +1308,7 @@
           GAME.buildingPhase = false;
           document.querySelector('#buildPhase').hidden = true;
           waveSystem.timer = getCurrentLevelConfig().waveInterval;
+          updateThreat();
           say('CONSTRUCTION COMPLETE // FIRST WAVE INBOUND');
         }
       }
