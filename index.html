@@ -40,6 +40,11 @@
     section { border-top:1px solid var(--line); padding-top:16px; margin-top:17px; }
     section h3 { font:500 12px 'Barlow Condensed'; letter-spacing:1.5px; color:var(--muted); margin:0 0 11px; }
     .build-grid { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+    .difficulty-control { background:#0c1918; border:1px solid #34504a; padding:10px; }
+    .difficulty-row { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:8px; font-size:10px; color:var(--muted); }
+    .difficulty-row strong { color:var(--orange); font:600 13px 'Barlow Condensed'; letter-spacing:1px; }
+    .difficulty-control input { width:100%; accent-color:var(--orange); cursor:pointer; }
+    .difficulty-scale { display:flex; justify-content:space-between; color:#708b84; font-size:8px; letter-spacing:.5px; margin-top:4px; }
     button { color:var(--ink); border:1px solid #376159; background:#1a302e; padding:10px 9px; text-align:left; cursor:pointer; font:500 11px 'IBM Plex Mono'; transition:background .15s,border .15s,transform .15s; }
     button:hover { background:#294943; border-color:var(--lime); transform:translateY(-1px); }
     button:disabled { opacity:.38; cursor:not-allowed; transform:none; }
@@ -48,6 +53,10 @@
     .queue { min-height:54px; background:#0c1918; border:1px dashed #34504a; padding:10px; font-size:10px; color:#a9beb8; }
     .queue-item { display:flex; justify-content:space-between; margin-bottom:5px; color:var(--ink); }
     .queue-item em { color:var(--orange); font-style:normal; }
+    .tutorial { position:relative; background:#0c1918; border:1px solid #34504a; padding:11px 28px 11px 11px; color:#a9beb8; font-size:10px; line-height:1.55; }
+    .tutorial b { color:var(--lime); font-weight:500; }
+    .tutorial-close { position:absolute; top:7px; right:7px; border:0; background:transparent; color:var(--muted); padding:2px 4px; font-size:13px; line-height:1; }
+    .tutorial-close:hover { color:var(--lime); background:transparent; border:0; transform:none; }
     .selected { background:#0d1b1a; border-left:2px solid var(--cyan); padding:11px; font-size:11px; line-height:1.6; }
     .selected b { color:var(--cyan); font-weight:500; }
     .legend { display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:9px; color:var(--muted); }
@@ -93,6 +102,15 @@
       <section><h3>WAVE CONTROL</h3><div class="build-grid">
         <button id="waveReadyButton" type="button"><strong>READY FOR WAVE</strong><small>Confirm when you are prepared.</small></button>
         <button id="elementButton" type="button"><strong>ELEMENT: FIRE</strong><small>Counter: fire > stone</small></button>
+      </div></section>
+      <section><h3>THREAT LEVEL</h3><div class="difficulty-control">
+        <div class="difficulty-row"><span>ENEMY PRESSURE</span><strong id="difficultyValue">STANDARD</strong></div>
+        <input id="difficultySlider" type="range" min="1" max="5" step="1" value="3" aria-label="Enemy difficulty">
+        <div class="difficulty-scale"><span>CALM</span><span>STANDARD</span><span>BRUTAL</span></div>
+      </div></section>
+      <section id="tutorialSection"><h3>QUICK TUTORIAL</h3><div class="tutorial">
+        <button id="tutorialClose" class="tutorial-close" type="button" aria-label="Close tutorial">x</button>
+        <b>PAUSE</b> anytime to plan. Resources refill over time. Deploy attacking ships from <b>DEPLOY UNIT</b>, but every ship costs metal and energy. Click <b>WALL</b> to place barriers; existing walls can be damaged and broken by attacks.
       </div></section>
       <section><h3>CASTLE STATUS</h3><div class="queue" id="queue">No active threat. Your castle is stable.</div></section>
       <section><h3>SECTOR NOTES</h3><div class="sub" style="margin:0">Enemy reinforcements arrive every 28 seconds. Destroyed assets become wreckage. Bring the commander close and press <b style="color:var(--lime)">R</b> to reclaim metal.</div></section>
@@ -172,6 +190,7 @@
   const matchState = { value: 'playing' };
   const waveSystem = { interval: 28, timer: 28, pending: false, preview: null, ready: false };
   const GAME = { paused: false, speed: 1, level: 0 };
+  const difficulty = { value: 3, labels: ['CALM', 'EASY', 'STANDARD', 'HARD', 'BRUTAL'] };
   const LEVELS = [
     { name: 'SECTOR 07', waveInterval: 28, enemyScale: 1, nextLevelAt: 35 },
     { name: 'BATTLELINE', waveInterval: 24, enemyScale: 1.35, nextLevelAt: 75 },
@@ -242,6 +261,19 @@
     return u;
   }
 
+  function addWall(x, y, owner = 'player') {
+    const wall = {
+      x, y,
+      hp: 120,
+      maxHp: 120,
+      radius: 14,
+      kind: 'wall',
+      owner,
+    };
+    walls.push(wall);
+    return wall;
+  }
+
   const playerCastle = addCastle('player', 190, 350);
   const enemyCastle = addCastle('enemy', 930, 350);
   addStructure('mex', 145, 220, 'player');
@@ -252,6 +284,10 @@
   addStructure('solar', 870, 220, 'enemy');
   addStructure('mex', 940, 300, 'enemy');
   addStructure('solar', 870, 300, 'enemy');
+  addWall(420, 280, 'player');
+  addWall(420, 336, 'player');
+  addWall(700, 344, 'enemy');
+  addWall(700, 400, 'enemy');
   addUnit('raider', 285, 390, 'player');
   addUnit('raider', 330, 440, 'player');
   addUnit('titan', 260, 500, 'player');
@@ -270,6 +306,7 @@
     const hostile = [];
     for (const unit of units) { if (unit.owner !== owner && unit.hp > 0) hostile.push(unit); }
     for (const building of buildings) { if (building.kind === 'castle' && building.owner !== owner && building.hp > 0) hostile.push(building); }
+    for (const wall of walls) { if (wall.owner !== owner && wall.hp > 0) hostile.push(wall); }
     return hostile;
   }
   function isRoadBlocked(x, y) {
@@ -419,6 +456,18 @@
       elementButton.innerHTML = `<strong>ELEMENT: ${label}</strong><small>Counter: ${economy.player.element} > ${cycle[(cycle.indexOf(economy.player.element) + 1) % cycle.length]}</small>`;
       say(`ELEMENT CHANGED TO ${label}`);
     });
+
+    const difficultySlider = document.querySelector('#difficultySlider');
+    const difficultyValue = document.querySelector('#difficultyValue');
+    difficultySlider.addEventListener('input', () => {
+      difficulty.value = Number(difficultySlider.value);
+      difficultyValue.textContent = difficulty.labels[difficulty.value - 1];
+      say(`THREAT LEVEL ${difficultyValue.textContent}`);
+    });
+
+    document.querySelector('#tutorialClose').addEventListener('click', () => {
+      document.querySelector('#tutorialSection').hidden = true;
+    });
   }
 
   function canAfford(owner, cost) {
@@ -470,15 +519,7 @@
 
     economy.player.metal -= wallCost.metal;
     economy.player.energy -= wallCost.energy;
-    walls.push({
-      x: snappedX,
-      y: snappedY,
-      hp: 120,
-      maxHp: 120,
-      radius: 14,
-      kind: 'wall',
-      owner: 'player',
-    });
+    addWall(snappedX, snappedY, 'player');
     say('WALL DEPLOYED');
   }
 
@@ -649,6 +690,14 @@
       }
     }
 
+    for (let i = walls.length - 1; i >= 0; i--) {
+      if (walls[i].hp <= 0) {
+        sparks.push({ x: walls[i].x, y: walls[i].y, life: 0, dx: 0, dy: -24 });
+        walls.splice(i, 1);
+        say('WALL BROKEN // PATH OPEN');
+      }
+    }
+
     for (let i = wrecks.length - 1; i >= 0; i--) {
       wrecks[i].life += dt;
       if (wrecks[i].life > 10) wrecks.splice(i, 1);
@@ -775,11 +824,16 @@
   function drawWall(wall) {
     ctx.save();
     ctx.translate(wall.x, wall.y);
+    const color = wall.owner === 'player' ? '#d5f36b' : '#ff736e';
     ctx.fillStyle = '#8aa3a0';
-    ctx.strokeStyle = '#dfeecf';
+    ctx.strokeStyle = color;
     ctx.lineWidth = 2;
     ctx.fillRect(-14, -14, 28, 28);
     ctx.strokeRect(-14, -14, 28, 28);
+    ctx.fillStyle = '#263a35';
+    ctx.fillRect(-18, 20, 36, 4);
+    ctx.fillStyle = color;
+    ctx.fillRect(-18, 20, 36 * Math.max(0, wall.hp / wall.maxHp), 4);
     ctx.restore();
   }
 
@@ -843,7 +897,8 @@
 
   function getWavePreview() {
     const level = getCurrentLevelConfig();
-    const baseCount = Math.round((2 + Math.min(6, Math.floor(elapsed / 18))) * level.enemyScale);
+    const difficultyScale = 0.7 + difficulty.value * 0.2;
+    const baseCount = Math.round((2 + Math.min(6, Math.floor(elapsed / 18))) * level.enemyScale * difficultyScale);
     const raiders = Math.max(1, Math.ceil(baseCount * 0.7));
     const artillery = Math.max(0, Math.ceil(baseCount * 0.25));
     const titans = elapsed > 60 && baseCount > 4 ? Math.max(1, Math.round(level.enemyScale * 0.4)) : 0;
@@ -852,6 +907,7 @@
 
   function spawnEnemyWave() {
     const preview = getWavePreview();
+    const enemyStrength = 0.8 + difficulty.value * 0.15;
     const spawnPadding = 90;
     const enemySpawns = [
       { x: 930 + spawnPadding, y: 240 },
@@ -868,10 +924,14 @@
       const unitType = i < preview.raiders ? 'raider' : i < preview.raiders + preview.artillery ? 'artillery' : 'titan';
       const x = spawn.x + (Math.random() * 55 - 28);
       const y = spawn.y + (Math.random() * 90 - 45);
+      const enemy = addUnit(unitType, x, y, 'enemy');
+      enemy.hp *= enemyStrength;
+      enemy.maxHp *= enemyStrength;
+      enemy.damage *= enemyStrength;
       if (unitType === 'titan' && spawned % 2 === 0) {
-        addUnit(unitType, x + 20, y, 'enemy');
+        enemy.x += 20;
       } else {
-        addUnit(unitType, x, y, 'enemy');
+        enemy.x = x;
       }
       spawned += 1;
     }
