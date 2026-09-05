@@ -285,6 +285,7 @@
   let wallMode = false;
   let warehouseMode = false;
   let warningBanner = null;
+  let constructionTimer = null;
 
   function resize(){ const r=canvas.getBoundingClientRect(); view.w=r.width; view.h=r.height; view.sx=r.width/W; view.sy=r.height/H; canvas.width=r.width*devicePixelRatio; canvas.height=r.height*devicePixelRatio; ctx.setTransform(devicePixelRatio*view.sx,0,0,devicePixelRatio*view.sy,0,0); }
   addEventListener('resize', resize); resize();
@@ -390,6 +391,18 @@
     const seconds = Math.ceil(GAME.buildTime);
     document.querySelector('#buildPhase').textContent = `CONSTRUCTION PHASE // ${seconds}s`;
     waveCountdown.textContent = `BUILD PHASE ${seconds}s`;
+  }
+  function completeConstructionPhase(){
+    if (!GAME.buildingPhase) return;
+    GAME.buildingPhase = false;
+    if (constructionTimer) {
+      clearInterval(constructionTimer);
+      constructionTimer = null;
+    }
+    document.querySelector('#buildPhase').hidden = true;
+    waveSystem.timer = getCurrentLevelConfig().waveInterval;
+    updateThreat();
+    say('CONSTRUCTION COMPLETE // FIRST WAVE INBOUND');
   }
   function getFocusConfig(){ return CONFIG.focusTypes[economy.player.focus] || CONFIG.focusTypes.fire; }
   function applyFocusTheme(){
@@ -644,6 +657,13 @@
       document.querySelector('#startScreen').hidden = true;
       document.querySelector('#buildPhase').hidden = false;
       updateConstructionDisplay();
+      if (constructionTimer) clearInterval(constructionTimer);
+      constructionTimer = setInterval(() => {
+        if (GAME.paused || !GAME.buildingPhase) return;
+        GAME.buildTime = Math.max(0, GAME.buildTime - 0.1);
+        updateConstructionDisplay();
+        if (GAME.buildTime <= 0) completeConstructionPhase();
+      }, 100);
       say(`${CONFIG.focusTypes[economy.player.focus].name} FOCUS // BUILD FOR 10s`);
     });
   }
@@ -1302,15 +1322,7 @@
     if (!GAME.paused && GAME.started) {
       elapsed += stepDt;
       if (GAME.buildingPhase) {
-        GAME.buildTime = Math.max(0, 10 - ((now - GAME.buildStartedAt) / 1000));
         updateConstructionDisplay();
-        if (GAME.buildTime <= 0) {
-          GAME.buildingPhase = false;
-          document.querySelector('#buildPhase').hidden = true;
-          waveSystem.timer = getCurrentLevelConfig().waveInterval;
-          updateThreat();
-          say('CONSTRUCTION COMPLETE // FIRST WAVE INBOUND');
-        }
       }
     }
 
