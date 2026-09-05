@@ -17,6 +17,9 @@
     h1 { margin:0; font:700 22px 'Barlow Condensed'; letter-spacing:2px; }
     .kicker { color:var(--muted); font-size:10px; letter-spacing:1.5px; }
     .status { display:flex; gap:22px; align-items:center; font-size:12px; }
+    .level-badge { padding:6px 10px; border:1px solid var(--line); background:#10201e; color:var(--lime); font:600 10px 'Barlow Condensed'; letter-spacing:2px; text-transform:uppercase; }
+    .game-controls { display:flex; gap:8px; align-items:center; }
+    .game-controls button { padding:7px 10px; font-size:9px; letter-spacing:1px; }
     .threat-status { min-width:116px; display:flex; flex-direction:column; gap:4px; }
     .threat-status .countdown { color:var(--orange); font-size:10px; letter-spacing:.7px; }
     .threat-status.warning { animation: threatPulse .7s ease-in-out infinite alternate; }
@@ -63,8 +66,14 @@
       <header>
         <div class="brand"><div class="brand-mark">I</div><div><h1>IRONLINE</h1><div class="kicker">ECONOMY SKIRMISH / SECTOR 07</div></div></div>
         <div class="status">
+          <div id="levelBadge" class="level-badge">LEVEL 1 // SECTOR 07</div>
           <div class="resource"><label>METAL <b id="metalText">400</b></label><div class="bar"><span id="metalBar"></span></div></div>
           <div class="resource energy"><label>ENERGY <b id="energyText">700</b></label><div class="bar"><span id="energyBar"></span></div></div>
+          <div class="resource aether"><label>AETHER <b id="aetherText">35</b></label><div class="bar"><span id="aetherBar"></span></div></div>
+          <div class="game-controls">
+            <button id="pauseButton" type="button">PAUSE</button>
+            <button id="speedButton" type="button">SPEED 1x</button>
+          </div>
           <div class="threat-status" id="threatStatus"><div id="clock" class="kicker">00:00 ELAPSED</div><div id="waveCountdown" class="countdown">NEXT WAVE 28s</div></div>
         </div>
       </header>
@@ -81,6 +90,10 @@
       <section><h3>DEFENCE</h3><div class="build-grid">
         <button id="wallButton" type="button"><strong>WALL</strong><small>20M / 10E · blocks path</small></button>
       </div></section>
+      <section><h3>WAVE CONTROL</h3><div class="build-grid">
+        <button id="waveReadyButton" type="button"><strong>READY FOR WAVE</strong><small>Confirm when you are prepared.</small></button>
+        <button id="elementButton" type="button"><strong>ELEMENT: FIRE</strong><small>Counter: fire > stone</small></button>
+      </div></section>
       <section><h3>CASTLE STATUS</h3><div class="queue" id="queue">No active threat. Your castle is stable.</div></section>
       <section><h3>SECTOR NOTES</h3><div class="sub" style="margin:0">Enemy reinforcements arrive every 28 seconds. Destroyed assets become wreckage. Bring the commander close and press <b style="color:var(--lime)">R</b> to reclaim metal.</div></section>
       <section><h3>FIELD LEGEND</h3><div class="legend"><span>YOUR FORCES</span><span>HOSTILES</span><span>PROJECTILES</span><span>WRECKAGE</span></div></section>
@@ -89,8 +102,8 @@
 <script>
 (() => {
   const canvas = document.querySelector('#game'), ctx = canvas.getContext('2d');
-  const metalText = document.querySelector('#metalText'), energyText = document.querySelector('#energyText');
-  const metalBar = document.querySelector('#metalBar'), energyBar = document.querySelector('#energyBar');
+  const metalText = document.querySelector('#metalText'), energyText = document.querySelector('#energyText'), aetherText = document.querySelector('#aetherText');
+  const metalBar = document.querySelector('#metalBar'), energyBar = document.querySelector('#energyBar'), aetherBar = document.querySelector('#aetherBar');
   const selectedEl = document.querySelector('#selected'), queueEl = document.querySelector('#queue'), toastEl = document.querySelector('#toast');
   const threatStatus = document.querySelector('#threatStatus'), waveCountdown = document.querySelector('#waveCountdown');
   const W = 1120, H = 680;
@@ -102,6 +115,7 @@
       baseIncome: 15,
       metalCap: 1200,
       energyCap: 2200,
+      aetherCap: 100,
       incomeCurve: (health, maxHealth) => Math.max(0, health / maxHealth),
     },
     castle: {
@@ -112,20 +126,34 @@
       attackCooldown: 1.4,
       radius: 36,
     },
+    elemental: {
+      order: ['fire', 'water', 'stone'],
+      counters: {
+        fire: { stone: 1.45, water: 0.75 },
+        water: { fire: 1.45, stone: 0.75 },
+        stone: { water: 1.45, fire: 0.75 },
+      },
+    },
     unitTypes: {
       raider: {
         name: 'RAIDER',
         cost: { metal: 65, energy: 45 },
+        affinity: 'fire',
+        attackStyle: 'fire',
         stats: { hp: 70, damage: 16, attackRange: 115, attackCooldown: 0.9, moveSpeed: 105 },
       },
       artillery: {
         name: 'ARTILLERY',
         cost: { metal: 110, energy: 130 },
+        affinity: 'water',
+        attackStyle: 'water',
         stats: { hp: 88, damage: 26, attackRange: 220, attackCooldown: 1.8, moveSpeed: 70 },
       },
       titan: {
         name: 'TITAN',
         cost: { metal: 180, energy: 100 },
+        affinity: 'stone',
+        attackStyle: 'stone',
         stats: { hp: 260, damage: 32, attackRange: 150, attackCooldown: 1.3, moveSpeed: 55 },
       },
     },
@@ -137,11 +165,19 @@
   };
 
   const economy = {
-    player: { metal: 400, energy: 700 },
+    player: { metal: 400, energy: 700, aether: 35, element: 'fire' },
     enemy: { metal: 0, energy: 0 },
   };
   const buildings = [], units = [], wrecks = [], sparks = [], walls = [];
   const matchState = { value: 'playing' };
+  const waveSystem = { interval: 28, timer: 28, pending: false, preview: null, ready: false };
+  const GAME = { paused: false, speed: 1, level: 0 };
+  const LEVELS = [
+    { name: 'SECTOR 07', waveInterval: 28, enemyScale: 1, nextLevelAt: 35 },
+    { name: 'BATTLELINE', waveInterval: 24, enemyScale: 1.35, nextLevelAt: 75 },
+    { name: 'FALLOUT', waveInterval: 20, enemyScale: 1.7, nextLevelAt: 115 },
+    { name: 'NEXUS', waveInterval: 18, enemyScale: 2.1, nextLevelAt: Infinity },
+  ];
   let wallMode = false;
   let warningBanner = null;
 
@@ -304,6 +340,21 @@
     return [];
   }
 
+  function getCurrentLevelConfig() {
+    const levelIndex = Math.min(LEVELS.length - 1, Math.floor(elapsed / 35));
+    GAME.level = levelIndex;
+    return LEVELS[levelIndex];
+  }
+
+  function syncLevelBadge() {
+    const level = getCurrentLevelConfig();
+    const badge = document.querySelector('#levelBadge');
+    if (!badge) return;
+    badge.textContent = `LEVEL ${GAME.level + 1} // ${level.name}`;
+    const kicker = document.querySelector('.kicker');
+    if (kicker) kicker.textContent = `ECONOMY SKIRMISH / ${level.name}`;
+  }
+
   function renderUnitButtons() {
     const unitButtons = document.querySelector('#unitButtons');
     unitButtons.innerHTML = Object.entries(CONFIG.unitTypes).map(([key, def]) => `
@@ -323,6 +374,48 @@
       wallButton.style.borderColor = wallMode ? '#d5f36b' : '#376159';
       wallButton.style.background = wallMode ? '#294943' : '#1a302e';
       say(wallMode ? 'WALL PLACEMENT READY' : 'WALL MODE OFF');
+    });
+
+    const pauseButton = document.querySelector('#pauseButton');
+    pauseButton.addEventListener('click', () => {
+      GAME.paused = !GAME.paused;
+      pauseButton.textContent = GAME.paused ? 'RESUME' : 'PAUSE';
+      say(GAME.paused ? 'GAME PAUSED' : 'GAME RESUMED');
+    });
+
+    const speedButton = document.querySelector('#speedButton');
+    speedButton.addEventListener('click', () => {
+      const cycle = [1, 2, 3];
+      const currentIndex = cycle.indexOf(GAME.speed);
+      GAME.speed = cycle[(currentIndex + 1) % cycle.length];
+      speedButton.textContent = `SPEED ${GAME.speed}x`;
+      say(`GAME SPEED ${GAME.speed}x`);
+    });
+
+    const waveReadyButton = document.querySelector('#waveReadyButton');
+    waveReadyButton.addEventListener('click', () => {
+      if (matchState.value !== 'playing') return;
+      if (!waveSystem.pending) {
+        say('NO WAVE READY YET');
+        return;
+      }
+      waveSystem.pending = false;
+      waveSystem.ready = true;
+      triggerBattleWarning();
+      spawnEnemyWave();
+      waveSystem.timer = getCurrentLevelConfig().waveInterval;
+      waveSystem.ready = false;
+      say('WAVE CONFIRMED — ENEMIES INBOUND');
+    });
+
+    const elementButton = document.querySelector('#elementButton');
+    elementButton.addEventListener('click', () => {
+      const cycle = CONFIG.elemental.order;
+      const index = cycle.indexOf(economy.player.element);
+      economy.player.element = cycle[(index + 1) % cycle.length];
+      const label = economy.player.element.toUpperCase();
+      elementButton.innerHTML = `<strong>ELEMENT: ${label}</strong><small>Counter: ${economy.player.element} > ${cycle[(cycle.indexOf(economy.player.element) + 1) % cycle.length]}</small>`;
+      say(`ELEMENT CHANGED TO ${label}`);
     });
   }
 
@@ -403,10 +496,26 @@
     return selectedTarget;
   }
 
+  function getElementalMultiplier(attacker, target) {
+    const attackerElement = attacker.affinity || attacker.attackStyle || 'fire';
+    const targetElement = target.affinity || target.attackStyle || 'stone';
+    const counterTable = CONFIG.elemental.counters[attackerElement] || {};
+    const base = counterTable[targetElement] || 1;
+
+    if (attacker.owner === 'player') {
+      const playerElement = economy.player.element || 'fire';
+      if (playerElement === attackerElement) return base * 1.2;
+      if (playerElement === targetElement) return base * 1.08;
+    }
+
+    return base;
+  }
+
   function applyAttack(attacker, target) {
     const amount = attacker.damage ?? attacker.stats?.damage ?? 0;
     if (!target || target.hp <= 0) return;
-    target.hp -= amount;
+    const multiplier = getElementalMultiplier(attacker, target);
+    target.hp -= amount * multiplier;
     sparks.push({ x: target.x, y: target.y, life: 0, dx: (Math.random() - 0.5) * 42, dy: (Math.random() - 0.5) * 42 });
     if (target.hp <= 0) target.hp = 0;
   }
@@ -472,6 +581,7 @@
 
     economy.player.metal = Math.min(CONFIG.economy.metalCap, economy.player.metal + playerIncome * dt);
     economy.player.energy = Math.min(CONFIG.economy.energyCap, economy.player.energy + (playerIncome * 0.75) * dt);
+    economy.player.aether = Math.min(CONFIG.economy.aetherCap, economy.player.aether + (playerIncome * 0.18) * dt);
     economy.enemy.metal = Math.min(CONFIG.economy.metalCap, economy.enemy.metal + enemyIncome * dt);
     economy.enemy.energy = Math.min(CONFIG.economy.energyCap, economy.enemy.energy + (enemyIncome * 0.75) * dt);
   }
@@ -701,6 +811,14 @@
     for (const unit of units) drawUnitUnit(unit);
     for (const wreck of wrecks) drawWreck(wreck);
     for (const spark of sparks) drawSpark(spark);
+    const level = getCurrentLevelConfig();
+    ctx.fillStyle = 'rgba(10, 25, 23, 0.72)';
+    ctx.fillRect(44, 18, 190, 32);
+    ctx.strokeStyle = '#31504a';
+    ctx.strokeRect(44, 18, 190, 32);
+    ctx.fillStyle = '#d5f36b';
+    ctx.font = '700 15px Barlow Condensed';
+    ctx.fillText(`LEVEL ${GAME.level + 1} // ${level.name}`, 54, 39);
     if (warningBanner) {
       ctx.fillStyle = 'rgba(7, 18, 17, 0.7)';
       ctx.fillRect(0, 0, W, H);
@@ -715,10 +833,52 @@
     }
   }
 
+  function getWavePreview() {
+    const level = getCurrentLevelConfig();
+    const baseCount = Math.round((2 + Math.min(6, Math.floor(elapsed / 18))) * level.enemyScale);
+    const raiders = Math.max(1, Math.ceil(baseCount * 0.7));
+    const artillery = Math.max(0, Math.ceil(baseCount * 0.25));
+    const titans = elapsed > 60 && baseCount > 4 ? Math.max(1, Math.round(level.enemyScale * 0.4)) : 0;
+    return { total: Math.max(2, baseCount + titans), raiders, artillery, titans };
+  }
+
+  function spawnEnemyWave() {
+    const preview = getWavePreview();
+    const spawnPadding = 90;
+    const enemySpawns = [
+      { type: 'raider', x: 930 + spawnPadding, y: 280 },
+      { type: 'raider', x: 980 + spawnPadding, y: 420 },
+      { type: 'artillery', x: 1000 + spawnPadding, y: 340 },
+      { type: 'raider', x: 1040 + spawnPadding, y: 520 },
+      { type: 'titan', x: 1030 + spawnPadding, y: 360 },
+    ];
+
+    for (let i = 0; i < preview.total; i++) {
+      const spawn = spawnSpawns[i % spawnSpawns.length];
+      const unitType = i < preview.raiders ? 'raider' : i < preview.raiders + preview.artillery ? 'artillery' : 'titan';
+      addUnit(unitType, spawn.x + (Math.random() * 55 - 28), spawn.y + (Math.random() * 80 - 40), 'enemy');
+    }
+
+    waveSystem.preview = preview;
+    say(`WAVE CONFIRMED // ${preview.total} ENEMIES`);
+  }
+
   function updateThreat() {
-    const remaining = Math.max(0, 28 - (elapsed % 28));
-    waveCountdown.textContent = remaining <= 0 ? 'HOSTILES ARRIVING' : `NEXT WAVE ${Math.ceil(remaining)}s`;
-    threatStatus.classList.toggle('warning', remaining <= 8 && matchState.value === 'playing');
+    const level = getCurrentLevelConfig();
+    const preview = getWavePreview();
+    if (waveSystem.pending) {
+      waveCountdown.textContent = `READY? ${preview.total} ENEMIES • ${level.name}`;
+      threatStatus.classList.toggle('warning', true);
+      return;
+    }
+
+    if (waveSystem.timer <= 0) {
+      waveCountdown.textContent = `READY? ${preview.total} ENEMIES • ${level.name}`;
+      waveSystem.pending = true;
+    } else {
+      waveCountdown.textContent = `${Math.ceil(waveSystem.timer)}s • ${preview.total} ENEMIES • ${level.name}`;
+    }
+    threatStatus.classList.toggle('warning', waveSystem.timer <= 8 && matchState.value === 'playing');
   }
 
   function triggerBattleWarning() {
@@ -774,33 +934,44 @@
   function frame(now) {
     const dt = Math.min((now - last) / 1000, 0.05);
     last = now;
-    elapsed += dt;
+    const stepDt = GAME.paused ? 0 : dt * GAME.speed;
 
-    if (matchState.value === 'playing') {
-      if (elapsed > 4 && !warningBanner) triggerBattleWarning();
-      updateEconomy(dt);
-      updateCombat(dt);
+    if (!GAME.paused) {
+      elapsed += stepDt;
+    }
+
+    if (matchState.value === 'playing' && !GAME.paused) {
+      if (elapsed > 3 && !warningBanner) triggerBattleWarning();
+      waveSystem.timer = Math.max(0, waveSystem.timer - stepDt);
+      if (waveSystem.timer <= 0 && !waveSystem.pending) {
+        waveSystem.pending = true;
+      }
+      updateEconomy(stepDt);
+      updateCombat(stepDt);
       updateThreat();
     }
 
     if (warningBanner) {
-      warningBanner.timer -= dt;
+      warningBanner.timer -= stepDt;
       if (warningBanner.timer <= 0) warningBanner = null;
     }
 
     if (toastTimer > 0) {
-      toastTimer -= dt;
+      toastTimer -= stepDt;
       if (toastTimer <= 0) toastEl.classList.remove('show');
     }
 
+    syncLevelBadge();
     draw();
     updatePanel();
     renderQueue();
 
     metalText.textContent = Math.floor(economy.player.metal);
     energyText.textContent = Math.floor(economy.player.energy);
+    aetherText.textContent = Math.floor(economy.player.aether);
     metalBar.style.width = `${Math.min(100, (economy.player.metal / CONFIG.economy.metalCap) * 100)}%`;
     energyBar.style.width = `${Math.min(100, (economy.player.energy / CONFIG.economy.energyCap) * 100)}%`;
+    aetherBar.style.width = `${Math.min(100, (economy.player.aether / CONFIG.economy.aetherCap) * 100)}%`;
     document.querySelector('#clock').textContent = `${new Date(elapsed * 1000).toISOString().substring(14, 19)} ELAPSED`;
 
     requestAnimationFrame(frame);
